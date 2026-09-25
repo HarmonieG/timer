@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1F2226">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Timer">
+<title>Timer</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600&family=Fraunces:ital,wght@1,400&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #1F2226;
+    --surface: #282C31;
+    --surface-2: #31363C;
+    --line: #3B4148;
+    --paper: #F2EDE4;
+    --muted: rgba(242, 237, 228, 0.6);
+    --faint: rgba(242, 237, 228, 0.35);
+    --teal: #3EC6A0;
+    --coral: #D9764A;
+    --danger: #E0685F;
+    --radius: 16px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--paper); }
+  body {
+    font-family: "Work Sans", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.45;
+    min-height: 100vh; min-height: 100dvh;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3, .title { font-family: "Fredoka", system-ui, sans-serif; font-weight: 600; margin: 0; }
+  .caption { font-family: "Fraunces", Georgia, serif; font-style: italic; color: var(--muted); }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+
+  header {
+    position: sticky; top: 0; z-index: 5;
+    padding: calc(var(--safe-top) + 14px) 20px 12px;
+    background: var(--bg);
+    display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+  }
+  .brand { display: flex; flex-direction: column; }
+  .wordmark { font-family: "Fredoka", sans-serif; font-weight: 600; color: var(--teal); font-size: 13px; letter-spacing: .02em; }
+  .brand h1 { font-size: 26px; line-height: 1.1; }
+  .sync { display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--muted); background: none; border: 0; padding: 6px 0; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); flex: none; }
+  .sync[data-state="ok"] .dot { background: var(--paper); }
+  .sync[data-state="sync"] .dot { background: var(--paper); animation: pulse 1s infinite; }
+  .sync[data-state="error"] .dot, .sync[data-state="offline"] .dot { background: var(--coral); }
+
+  main { padding: 4px 20px calc(var(--safe-bottom) + 96px); max-width: 560px; margin: 0 auto; }
+
+  nav.tabs {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    display: flex; justify-content: center; gap: 4px;
+    padding: 8px 12px calc(var(--safe-bottom) + 8px);
+    background: rgba(31, 34, 38, 0.94);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid var(--line);
+  }
+  nav.tabs button {
+    flex: 1; max-width: 170px; background: none; border: 0; padding: 10px 6px;
+    border-radius: 12px; color: var(--muted); font-weight: 500; font-size: 15px;
+  }
+  nav.tabs button[aria-current="page"] { color: var(--paper); background: var(--surface); }
+
+  .card { background: var(--surface); border-radius: var(--radius); padding: 16px; }
+  .stack > * + * { margin-top: 12px; }
+  .section-title { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-family: "Work Sans", sans-serif; font-weight: 600; margin: 24px 0 10px; }
+
+  /* Timer */
+  .timer-hero { text-align: center; padding: 28px 0 8px; }
+  .timer-hero .project-name { font-size: 24px; }
+  .clock {
+    font-family: "Fredoka", sans-serif; font-weight: 600;
+    font-size: clamp(56px, 19vw, 88px); line-height: 1; margin: 18px 0 10px;
+    font-variant-numeric: tabular-nums; letter-spacing: -0.01em;
+  }
+  .clock.idle { color: var(--faint); }
+  .running-tag { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--muted); }
+  .running-tag .dot { background: var(--coral); animation: pulse 1.6s infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  .big-btn {
+    display: block; width: 100%; border: 0; border-radius: 999px;
+    padding: 20px; font-family: "Fredoka", sans-serif; font-weight: 600; font-size: 22px;
+    background: var(--paper); color: var(--bg); margin-top: 24px;
+    transition: transform .08s ease, opacity .2s;
+  }
+  .big-btn:active { transform: scale(.98); }
+  .big-btn:disabled { opacity: .3; }
+  .big-btn.stop { background: transparent; color: var(--paper); border: 2px solid var(--paper); }
+  .link-btn { background: none; border: 0; color: var(--muted); text-decoration: underline; text-underline-offset: 3px; padding: 12px; font-size: 14px; }
+
+  .pick-list { display: flex; flex-direction: column; gap: 8px; }
+  .pick {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    background: var(--surface); border: 2px solid transparent; border-radius: 14px; padding: 14px 16px;
+  }
+  .pick[aria-pressed="true"] { border-color: var(--paper); }
+  .pick .radio { width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--faint); flex: none; display: grid; place-items: center; }
+  .pick[aria-pressed="true"] .radio { border-color: var(--paper); }
+  .pick[aria-pressed="true"] .radio::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--paper); }
+  .pick .meta { font-size: 13px; color: var(--muted); }
+  .grow { flex: 1; min-width: 0; }
+  .ellipsis { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .done-card { margin-top: 20px; border: 1px solid var(--line); }
+  .done-card .title { font-size: 18px; }
+
+  /* Forms */
+  label.field { display: block; font-size: 13px; color: var(--muted); }
+  label.field > span { display: block; margin-bottom: 6px; }
+  input[type="text"], input[type="password"], input[type="datetime-local"], select {
+    width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
+    padding: 12px 14px; font-size: 16px; color: var(--paper); -webkit-appearance: none; appearance: none;
+  }
+  input:focus { outline: 2px solid var(--paper); outline-offset: 1px; }
+  input[type="datetime-local"] { min-height: 48px; }
+  .row { display: flex; gap: 10px; }
+  .row > * { flex: 1; min-width: 0; }
+  .btn {
+    border: 0; border-radius: 12px; padding: 12px 16px; font-weight: 600;
+    background: var(--paper); color: var(--bg); font-size: 15px;
+  }
+  .btn.ghost { background: var(--surface-2); color: var(--paper); }
+  .btn.danger { background: transparent; color: var(--danger); border: 1px solid rgba(224,104,95,.5); }
+  .btn.full { width: 100%; }
+
+  /* Projects */
+  .seg { display: flex; background: var(--surface); border-radius: 12px; padding: 4px; margin-bottom: 14px; }
+  .seg button { flex: 1; border: 0; background: none; padding: 9px; border-radius: 9px; color: var(--muted); font-weight: 500; }
+  .seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--paper); }
+  .proj {
+    display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+    background: var(--surface); border: 0; border-radius: 14px; padding: 14px 16px;
+  }
+  .proj + .proj { margin-top: 8px; }
+  .proj .name { font-weight: 600; }
+  .proj .meta { font-size: 13px; color: var(--muted); }
+  .chev { color: var(--faint); font-size: 20px; }
+  .live { width: 8px; height: 8px; border-radius: 50%; background: var(--coral); animation: pulse 1.6s infinite; flex: none; }
+  .empty { text-align: center; padding: 36px 12px; }
+  .empty p { margin: 8px 0 0; }
+
+  .back { background: none; border: 0; color: var(--muted); padding: 4px 0 12px; font-size: 15px; }
+  .detail-head h2 { font-size: 28px; line-height: 1.15; }
+  .badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); color: var(--muted); margin-top: 8px; }
+  .badge.done { background: var(--paper); color: var(--bg); }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 18px; }
+  .stat { background: var(--surface); border-radius: 14px; padding: 14px; }
+  .stat .v { font-family: "Fredoka", sans-serif; font-weight: 600; font-size: 24px; line-height: 1.15; }
+  .stat .v.small { font-size: 17px; }
+  .stat .k { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+  .actions .btn { flex: 1 1 auto; }
+
+  .sess { background: var(--surface); border-radius: 14px; }
+  .sess + .sess { margin-top: 8px; }
+  .sess-head { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: none; border: 0; padding: 14px 16px; }
+  .sess-num { font-family: "Fredoka", sans-serif; font-weight: 600; color: var(--faint); width: 28px; flex: none; }
+  .sess .when { font-weight: 500; }
+  .sess .note { font-size: 13px; color: var(--muted); }
+  .sess .dur { font-family: "Fredoka", sans-serif; font-weight: 600; white-space: nowrap; }
+  .sess-edit { padding: 0 16px 16px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 84px); transform: translateX(-50%);
+    background: var(--paper); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 500;
+    z-index: 20; max-width: calc(100% - 40px); box-shadow: 0 6px 24px rgba(0,0,0,.35);
+  }
+  .help { font-size: 13px; color: var(--muted); }
+  .help a { color: var(--paper); }
+  .status-line { font-size: 14px; }
+  .status-line.error { color: var(--coral); }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="wordmark">harmonie games</span>
+    <h1>Timer</h1>
+  </div>
+  <button class="sync" id="sync" data-action="sync-now" data-state="local" aria-label="Synchroniser">
+    <span class="dot"></span><span id="sync-label">Local</span>
+  </button>
+</header>
+<main id="app"></main>
+<nav class="tabs">
+  <button data-action="nav" data-view="timer">Timer</button>
+  <button data-action="nav" data-view="projects">Projets</button>
+  <button data-action="nav" data-view="settings">Réglages</button>
+</nav>
+
+<script>
+"use strict";
+
+/* ---------- Stockage local (config + cache hors ligne) ---------- */
+const K = { config: "ct.config", data: "ct.data", dirty: "ct.dirty", selected: "ct.selected", lastSync: "ct.lastSync" };
+const store = {
+  get(k, fallback) { try { const v = localStorage.getItem(k); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+
+const emptyData = () => ({ version: 1, projects: [], sessions: [], running: { projectId: null, start: null, updatedAt: 0 } });
+
+let config = store.get(K.config, { owner: "", repo: "", path: "data.json", token: "" });
+let data = normalize(store.get(K.data, null) || emptyData());
+let dirty = store.get(K.dirty, false);
+let changeCounter = 0;
+
+const ui = {
+  view: "timer",
+  projectId: null,
+  filter: "active",
+  selected: store.get(K.selected, null),
+  editSession: null,
+  justStopped: null,
+  syncState: "local",
+  syncError: "",
+};
+
+/* ---------- Utilitaires ---------- */
+const now = () => Date.now();
+const uid = () => now().toString(36) + Math.random().toString(36).slice(2, 7);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pad = (n) => String(n).padStart(2, "0");
+
+function fmtClock(ms) {
+  const s = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
+}
+function fmtDur(ms) {
+  const min = Math.round(ms / 60000);
+  if (ms > 0 && min < 1) return "< 1 min";
+  const h = Math.floor(min / 60), m = min % 60;
+  if (h === 0) return `${m} min`;
+  return m === 0 ? `${h} h` : `${h} h ${pad(m)}`;
+}
+const dateFmt = new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "numeric", month: "short" });
+const dateLongFmt = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "short", year: "numeric" });
+const timeFmt = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const fmtDate = (ts) => dateFmt.format(new Date(ts));
+const fmtDateLong = (ts) => dateLongFmt.format(new Date(ts));
+const fmtTime = (ts) => timeFmt.format(new Date(ts));
+const toLocalInput = (ts) => { const d = new Date(ts); return new Date(ts - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+const fromLocalInput = (v) => (v ? new Date(v).getTime() : NaN);
+
+function b64EncodeUtf8(str) {
+  const bytes = new TextEncoder().encode(str);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function b64DecodeUtf8(b64) {
+  const bin = atob(b64.replace(/\s/g, ""));
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(bytes);
+}
+function canonical(v) {
+  if (Array.isArray(v)) return "[" + v.map(canonical).join(",") + "]";
+  if (v && typeof v === "object") return "{" + Object.keys(v).sort().map((k) => JSON.stringify(k) + ":" + canonical(v[k])).join(",") + "}";
+  return JSON.stringify(v === undefined ? null : v);
+}
+
+/* ---------- Modèle et fusion ---------- */
+function normalize(d) {
+  const base = emptyData();
+  if (!d || typeof d !== "object") return base;
+  return {
+    version: 1,
+    projects: Array.isArray(d.projects) ? d.projects : [],
+    sessions: Array.isArray(d.sessions) ? d.sessions : [],
+    running: d.running && typeof d.running === "object" ? { projectId: d.running.projectId ?? null, start: d.running.start ?? null, updatedAt: d.running.updatedAt || 0 } : base.running,
+  };
+}
+function mergeList(a, b) {
+  const map = new Map();
+  for (const item of [...a, ...b]) {
+    const cur = map.get(item.id);
+    if (!cur || (item.updatedAt || 0) > (cur.updatedAt || 0)) map.set(item.id, item);
+  }
+  return [...map.values()].sort((x, y) => (x.createdAt || 0) - (y.createdAt || 0) || String(x.id).localeCompare(String(y.id)));
+}
+function merge(a, b) {
+  a = normalize(a); b = normalize(b);
+  return {
+    version: 1,
+    projects: mergeList(a.projects, b.projects),
+    sessions: mergeList(a.sessions, b.sessions),
+    running: (b.running.updatedAt || 0) > (a.running.updatedAt || 0) ? b.running : a.running,
+  };
+}
+
+const liveProjects = () => data.projects.filter((p) => !p.deleted);
+const getProject = (id) => data.projects.find((p) => p.id === id && !p.deleted);
+const projectSessions = (id) => data.sessions.filter((s) => s.projectId === id && !s.deleted).sort((a, b) => a.start - b.start);
+function projectStats(id) {
+  const ss = projectSessions(id);
+  const total = ss.reduce((acc, s) => acc + Math.max(0, s.end - s.start), 0);
+  return { count: ss.length, total, avg: ss.length ? total / ss.length : 0, first: ss[0]?.start ?? null, last: ss.length ? ss[ss.length - 1].end : null };
+}
+const isRunning = () => !!(data.running.projectId && data.running.start);
+
+/* ---------- Mutations ---------- */
+function commit() {
+  changeCounter++;
+  dirty = true;
+  store.set(K.data, data);
+  store.set(K.dirty, true);
+  render();
+  scheduleSync();
+}
+function addProject(name, discipline) {
+  const t = now();
+  const p = { id: uid(), name: name.trim(), discipline: (discipline || "").trim(), status: "active", createdAt: t, finishedAt: null, updatedAt: t };
+  data.projects.push(p);
+  ui.selected = p.id; store.set(K.selected, p.id);
+  commit();
+  return p;
+}
+function updateProject(id, patch) {
+  const i = data.projects.findIndex((p) => p.id === id);
+  if (i < 0) return;
+  data.projects[i] = { ...data.projects[i], ...patch, updatedAt: now() };
+  commit();
+}
+function updateSession(id, patch) {
+  const i = data.sessions.findIndex((s) => s.id === id);
+  if (i < 0) return;
+  data.sessions[i] = { ...data.sessions[i], ...patch, updatedAt: now() };
+  commit();
+}
+function startTimer(projectId) {
+  if (isRunning() || !getProject(projectId)) return;
+  const t = now();
+  data.running = { projectId, start: t, updatedAt: t };
+  ui.justStopped = null;
+  commit();
+}
+function stopTimer() {
+  if (!isRunning()) return;
+  const t = now();
+  const s = { id: uid(), projectId: data.running.projectId, start: data.running.start, end: t, note: "", createdAt: t, updatedAt: t };
+  data.sessions.push(s);
+  data.running = { projectId: null, start: null, updatedAt: t };
+  ui.justStopped = s.id;
+  commit();
+}
+function cancelTimer() {
+  data.running = { projectId: null, start: null, updatedAt: now() };
+  commit();
+}
+
+/* ---------- Synchro GitHub ---------- */
+const isConfigured = () => !!(config.owner && config.repo && config.token && config.path);
+function apiUrl() {
+  const path = config.path.split("/").map(encodeURIComponent).join("/");
+  return `https://api.github.com/repos/${encodeURIComponent(config.owner)}/${encodeURIComponent(config.repo)}/contents/${path}`;
+}
+const ghHeaders = () => ({ Authorization: `Bearer ${config.token}`, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28" });
+
+class SyncError extends Error { constructor(msg, status) { super(msg); this.status = status; } }
+
+async function ghGet() {
+  const res = await fetch(apiUrl() + `?t=${now()}`, { headers: ghHeaders(), cache: "no-store" });
+  if (res.status === 404) return { data: null, sha: null };
+  if (res.status === 401) throw new SyncError("Jeton invalide ou expiré.", 401);
+  if (res.status === 403) throw new SyncError("Accès refusé : vérifie les permissions du jeton.", 403);
+  if (!res.ok) throw new SyncError(`Erreur GitHub (${res.status}).`, res.status);
+  const json = await res.json();
+  let parsed;
+  try { parsed = JSON.parse(b64DecodeUtf8(json.content || "")); } catch { throw new SyncError("Le fichier de données n'est pas un JSON valide.", 0); }
+  return { data: normalize(parsed), sha: json.sha };
+}
+async function ghPut(content, sha) {
+  const body = { message: `Timer : mise à jour ${new Date().toISOString()}`, content: b64EncodeUtf8(JSON.stringify(content, null, 2) + "\n") };
+  if (sha) body.sha = sha;
+  const res = await fetch(apiUrl(), { method: "PUT", headers: { ...ghHeaders(), "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (res.status === 409 || res.status === 422) return { conflict: true };
+  if (res.status === 404) throw new SyncError("Dépôt introuvable, ou le jeton n'y a pas accès.", 404);
+  if (res.status === 401) throw new SyncError("Jeton invalide ou expiré.", 401);
+  if (res.status === 403) throw new SyncError("Écriture refusée : le jeton doit avoir Contents en lecture et écriture.", 403);
+  if (!res.ok) throw new SyncError(`Erreur GitHub (${res.status}).`, res.status);
+  return { conflict: false };
+}
+
+let syncing = false, syncAgain = false, syncTimer = null;
+function scheduleSync(delay = 700) {
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(sync, delay);
+}
+function setSyncState(state, error = "") {
+  ui.syncState = state; ui.syncError = error;
+  const el = document.getElementById("sync");
+  const labels = { local: "Local", sync: "Synchro…", ok: "Synchronisé", error: "Erreur", offline: "Hors ligne" };
+  el.dataset.state = state;
+  document.getElementById("sync-label").textContent = labels[state] || state;
+  const line = document.getElementById("status-line");
+  if (line) {
+    line.textContent = settingsStatusText();
+    line.classList.toggle("error", state === "error" || state === "offline");
+  }
+}
+function settingsStatusText() {
+  const last = store.get(K.lastSync, null);
+  if (!isConfigured()) return "Non configuré : les données restent sur cet appareil pour l'instant.";
+  if (ui.syncState === "ok") return `Synchronisé${last ? " à " + fmtTime(last) : ""}.`;
+  if (ui.syncState === "sync") return "Synchronisation en cours…";
+  return ui.syncError || "En attente.";
+}
+async function sync() {
+  if (!isConfigured()) { setSyncState("local"); return; }
+  if (syncing) { syncAgain = true; return; }
+  syncing = true;
+  setSyncState("sync");
+  const startCounter = changeCounter;
+  try {
+    let done = false;
+    for (let attempt = 0; attempt < 4 && !done; attempt++) {
+      const remote = await ghGet();
+      const merged = remote.data ? merge(remote.data, data) : normalize(data);
+      if (remote.data && canonical(merged) === canonical(remote.data)) {
+        done = true;
+      } else {
+        const r = await ghPut(merged, remote.sha);
+        if (!r.conflict) done = true;
+      }
+      if (done) {
+        data = merge(merged, data);
+        if (changeCounter === startCounter) { dirty = false; store.set(K.dirty, false); }
+        else syncAgain = true;
+        store.set(K.data, data);
+        store.set(K.lastSync, now());
+      }
+    }
+    if (!done) throw new SyncError("Conflit persistant, réessaie dans un instant.", 409);
+    setSyncState("ok");
+    render();
+  } catch (e) {
+    if (e instanceof SyncError) setSyncState("error", e.message);
+    else setSyncState("offline", "Pas de connexion : les changements seront envoyés au retour du réseau.");
+  } finally {
+    syncing = false;
+    if (syncAgain) { syncAgain = false; scheduleSync(300); }
+  }
+}
+
+/* ---------- Rendu ---------- */
+const app = document.getElementById("app");
+
+function render() {
+  document.querySelectorAll("nav.tabs button").forEach((b) => {
+    const active = b.dataset.view === ui.view || (ui.view === "project" && b.dataset.view === "projects");
+    b.toggleAttribute("aria-current", false);
+    if (active) b.setAttribute("aria-current", "page");
+  });
+  const focused = document.activeElement;
+  const keepFocus = focused && focused.id && app.contains(focused) ? { id: focused.id, value: focused.value, start: focused.selectionStart } : null;
+  if (ui.view === "timer") app.innerHTML = viewTimer();
+  else if (ui.view === "projects") app.innerHTML = viewProjects();
+  else if (ui.view === "project") app.innerHTML = viewProject();
+  else app.innerHTML = viewSettings();
+  if (keepFocus) {
+    const el = document.getElementById(keepFocus.id);
+    if (el) { el.value = keepFocus.value; el.focus(); try { el.setSelectionRange(keepFocus.start, keepFocus.start); } catch {} }
+  }
+  tick();
+}
+
+function viewTimer() {
+  if (isRunning()) {
+    const p = getProject(data.running.projectId);
+    const st = projectStats(data.running.projectId);
+    return `
+      <div class="timer-hero">
+        <h2 class="project-name">${esc(p ? p.name : "Projet supprimé")}</h2>
+        ${p && p.discipline ? `<div class="caption">${esc(p.discipline)}</div>` : ""}
+        <div class="clock" id="clock">00:00</div>
+        <div class="running-tag"><span class="dot"></span>Session ${st.count + 1} en cours · depuis ${fmtTime(data.running.start)}</div>
+      </div>
+      <button class="big-btn stop" data-action="stop">Terminer la session</button>
+      <div style="text-align:center"><button class="link-btn" data-action="cancel">Annuler cette session</button></div>
+      <p class="help" style="text-align:center">Tu peux quitter l'app pour filmer : le temps est calculé depuis l'heure de départ.</p>`;
+  }
+
+  const projects = liveProjects().filter((p) => p.status === "active");
+  if (ui.selected && !projects.some((p) => p.id === ui.selected)) ui.selected = null;
+  if (!ui.selected && projects.length === 1) ui.selected = projects[0].id;
+
+  let stoppedCard = "";
+  const js = ui.justStopped && data.sessions.find((s) => s.id === ui.justStopped);
+  if (js) {
+    const jp = getProject(js.projectId);
+    const n = projectSessions(js.projectId).findIndex((s) => s.id === js.id) + 1;
+    stoppedCard = `
+      <div class="card done-card stack">
+        <div>
+          <div class="title">Session ${n} terminée · ${fmtDur(js.end - js.start)}</div>
+          <div class="caption">${esc(jp ? jp.name : "")}</div>
+        </div>
+        <label class="field"><span>Note (facultatif)</span>
+          <input type="text" id="stop-note" placeholder="Ex. sous-couche terminée" value="${esc(js.note)}" enterkeyhint="done"></label>
+        <div class="row"><button class="btn ghost" data-action="dismiss-stopped">Fermer</button><button class="btn" data-action="save-stop-note">Enregistrer</button></div>
+      </div>`;
+  }
+
+  if (!projects.length) {
+    return `${stoppedCard}
+      <div class="empty">
+        <h2>Aucun projet en cours</h2>
+        <p class="caption">Crée ton premier projet pour lancer le chrono.</p>
+      </div>
+      <button class="big-btn" data-action="nav" data-view="projects">Créer un projet</button>`;
+  }
+
+  const sel = ui.selected ? getProject(ui.selected) : null;
+  const list = projects
+    .slice()
+    .sort((a, b) => (projectStats(b.id).last || b.createdAt) - (projectStats(a.id).last || a.createdAt))
+    .map((p) => {
+      const st = projectStats(p.id);
+      return `<button class="pick" data-action="select" data-id="${p.id}" aria-pressed="${p.id === ui.selected}">
+        <span class="radio"></span>
+        <span class="grow"><span class="ellipsis" style="display:block;font-weight:600">${esc(p.name)}</span>
+        <span class="meta">${p.discipline ? esc(p.discipline) + " · " : ""}${st.count} session${st.count > 1 ? "s" : ""} · ${fmtDur(st.total)}</span></span>
+      </button>`;
+    }).join("");
+
+  return `${stoppedCard}
+    <div class="timer-hero">
+      <div class="clock idle">00:00</div>
+      <div class="caption">${sel ? "Prêt pour la session " + (projectStats(sel.id).count + 1) : "Choisis un projet"}</div>
+    </div>
+    <button class="big-btn" data-action="start" ${sel ? "" : "disabled"}>Démarrer</button>
+    <div class="section-title">Projet</div>
+    <div class="pick-list">${list}</div>`;
+}
+
+function viewProjects() {
+  const all = liveProjects();
+  const shown = all.filter((p) => (ui.filter === "done" ? p.status === "done" : p.status !== "done"))
+    .sort((a, b) => ui.filter === "done" ? (b.finishedAt || 0) - (a.finishedAt || 0) : (projectStats(b.id).last || b.createdAt) - (projectStats(a.id).last || a.createdAt));
+  const disciplines = [...new Set(all.map((p) => p.discipline).filter(Boolean))];
+  const nActive = all.filter((p) => p.status !== "done").length, nDone = all.length - nActive;
+
+  const list = shown.map((p) => {
+    const st = projectStats(p.id);
+    const live = isRunning() && data.running.projectId === p.id;
+    return `<button class="proj" data-action="open" data-id="${p.id}">
+      ${live ? '<span class="live"></span>' : ""}
+      <span class="grow"><span class="name ellipsis" style="display:block">${esc(p.name)}</span>
+      <span class="meta">${p.discipline ? esc(p.discipline) + " · " : ""}${st.count} session${st.count > 1 ? "s" : ""} · ${fmtDur(st.total)}${p.status === "done" && p.finishedAt ? " · fini le " + fmtDateLong(p.finishedAt) : ""}</span></span>
+      <span class="chev">›</span>
+    </button>`;
+  }).join("");
+
+  return `
+    <form class="card stack" data-form="new-project" autocomplete="off">
+      <h3>Nouveau projet</h3>
+      <label class="field"><span>Nom</span><input type="text" id="np-name" name="name" placeholder="Ex. Figurine Chopper" required></label>
+      <label class="field"><span>Discipline</span><input type="text" id="np-disc" name="discipline" list="disc-list" placeholder="Ex. Figurine, Jeu, Pixel art"></label>
+      <datalist id="disc-list">${disciplines.map((d) => `<option value="${esc(d)}">`).join("")}</datalist>
+      <button class="btn full" type="submit">Créer</button>
+    </form>
+    <div class="section-title">Mes projets</div>
+    <div class="seg">
+      <button data-action="filter" data-filter="active" aria-pressed="${ui.filter === "active"}">En cours (${nActive})</button>
+      <button data-action="filter" data-filter="done" aria-pressed="${ui.filter === "done"}">Terminés (${nDone})</button>
+    </div>
+    ${list || `<div class="empty"><p class="caption">${ui.filter === "done" ? "Aucune œuvre terminée pour l'instant." : "Aucun projet en cours."}</p></div>`}`;
+}
+
+function viewProject() {
+  const p = getProject(ui.projectId);
+  if (!p) { ui.view = "projects"; return viewProjects(); }
+  const st = projectStats(p.id);
+  const ss = projectSessions(p.id);
+  const live = isRunning() && data.running.projectId === p.id;
+
+  const sessions = ss.map((s, i) => ({ s, n: i + 1 })).reverse().map(({ s, n }) => {
+    const open = ui.editSession === s.id;
+    return `<div class="sess">
+      <button class="sess-head" data-action="edit-session" data-id="${s.id}">
+        <span class="sess-num">${n}</span>
+        <span class="grow"><span class="when" style="display:block">${fmtDate(s.start)} · ${fmtTime(s.start)}–${fmtTime(s.end)}</span>
+        ${s.note ? `<span class="note ellipsis" style="display:block">${esc(s.note)}</span>` : ""}</span>
+        <span class="dur">${fmtDur(s.end - s.start)}</span>
+      </button>
+      ${open ? `<form class="sess-edit stack" data-form="edit-session" data-id="${s.id}">
+        <div class="row">
+          <label class="field"><span>Début</span><input type="datetime-local" name="start" value="${toLocalInput(s.start)}" required></label>
+          <label class="field"><span>Fin</span><input type="datetime-local" name="end" value="${toLocalInput(s.end)}" required></label>
+        </div>
+        <label class="field"><span>Note</span><input type="text" name="note" value="${esc(s.note)}"></label>
+        <div class="row"><button type="button" class="btn danger" data-action="delete-session" data-id="${s.id}">Supprimer</button><button class="btn" type="submit">Enregistrer</button></div>
+      </form>` : ""}
+    </div>`;
+  }).join("");
+
+  const addOpen = ui.editSession === "__new";
+  const defEnd = now(), defStart = defEnd - 3600000;
+
+  return `
+    <button class="back" data-action="nav" data-view="projects">‹ Projets</button>
+    <div class="detail-head">
+      <h2>${esc(p.name)}</h2>
+      ${p.discipline ? `<div class="caption">${esc(p.discipline)}</div>` : ""}
+      <span class="badge ${p.status === "done" ? "done" : ""}">${p.status === "done" ? "Terminé" : live ? "Session en cours" : "En cours"}</span>
+    </div>
+    <div class="stats">
+      <div class="stat"><div class="v">${st.count}</div><div class="k">session${st.count > 1 ? "s" : ""}</div></div>
+      <div class="stat"><div class="v">${fmtDur(st.total)}</div><div class="k">temps total</div></div>
+      <div class="stat"><div class="v">${st.count ? fmtDur(st.avg) : "—"}</div><div class="k">moyenne par session</div></div>
+      <div class="stat"><div class="v small">${st.first ? fmtDateLong(st.first) : "—"}</div><div class="k">${p.status === "done" && p.finishedAt ? "au " + fmtDateLong(p.finishedAt) : "première session"}</div></div>
+    </div>
+    <div class="actions">
+      ${p.status === "done"
+        ? `<button class="btn ghost" data-action="reopen" data-id="${p.id}">Rouvrir</button>`
+        : `<button class="btn" data-action="finish" data-id="${p.id}" ${live ? "disabled" : ""}>Marquer comme terminé</button>
+           ${!isRunning() ? `<button class="btn ghost" data-action="start-from" data-id="${p.id}">Démarrer une session</button>` : ""}`}
+      <button class="btn ghost" data-action="rename" data-id="${p.id}">Renommer</button>
+      <button class="btn danger" data-action="delete-project" data-id="${p.id}" ${live ? "disabled" : ""}>Supprimer</button>
+    </div>
+    <div class="section-title">Sessions</div>
+    ${sessions || `<p class="caption">Aucune session pour l'instant.</p>`}
+    <div style="margin-top:12px">
+      ${addOpen ? `<form class="card stack" data-form="add-session" data-id="${p.id}">
+        <h3>Session oubliée</h3>
+        <div class="row">
+          <label class="field"><span>Début</span><input type="datetime-local" name="start" value="${toLocalInput(defStart)}" required></label>
+          <label class="field"><span>Fin</span><input type="datetime-local" name="end" value="${toLocalInput(defEnd)}" required></label>
+        </div>
+        <label class="field"><span>Note</span><input type="text" name="note"></label>
+        <div class="row"><button type="button" class="btn ghost" data-action="edit-session" data-id="__new">Annuler</button><button class="btn" type="submit">Ajouter</button></div>
+      </form>` : `<button class="btn ghost full" data-action="edit-session" data-id="__new">+ Ajouter une session oubliée</button>`}
+    </div>`;
+}
+
+function viewSettings() {
+  const statusText = settingsStatusText();
+  return `
+    <form class="card stack" data-form="settings" autocomplete="off">
+      <h3>Stockage GitHub</h3>
+      <p class="help">Les données sont enregistrées dans un fichier JSON d'un dépôt GitHub privé. Chaque modification crée un commit : l'historique sert de sauvegarde.</p>
+      <div class="row">
+        <label class="field"><span>Compte</span><input type="text" id="cfg-owner" name="owner" value="${esc(config.owner)}" placeholder="HarmonieG" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+        <label class="field"><span>Dépôt</span><input type="text" id="cfg-repo" name="repo" value="${esc(config.repo)}" placeholder="timer-data" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+      </div>
+      <label class="field"><span>Fichier</span><input type="text" id="cfg-path" name="path" value="${esc(config.path)}" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+      <label class="field"><span>Jeton d'accès (fine-grained, Contents : lecture et écriture)</span><input type="password" id="cfg-token" name="token" value="${esc(config.token)}" placeholder="github_pat_…" autocapitalize="off" autocorrect="off" spellcheck="false" required></label>
+      <button class="btn full" type="submit">Enregistrer et synchroniser</button>
+      <p id="status-line" class="status-line ${ui.syncState === "error" || ui.syncState === "offline" ? "error" : ""}">${esc(statusText)}</p>
+    </form>
+    <div class="section-title">Données</div>
+    <div class="card stack">
+      <p class="help" style="margin:0">${liveProjects().length} projet(s), ${data.sessions.filter((s) => !s.deleted).length} session(s).</p>
+      <div class="row">
+        <button class="btn ghost" data-action="sync-now">Synchroniser</button>
+        <button class="btn ghost" data-action="export">Exporter le JSON</button>
+      </div>
+    </div>`;
+}
+
+/* ---------- Chrono ---------- */
+function tick() {
+  const el = document.getElementById("clock");
+  if (el && isRunning()) el.textContent = fmtClock(now() - data.running.start);
+}
+setInterval(tick, 1000);
+
+/* ---------- Toast ---------- */
+let toastTimer;
+function toast(msg) {
+  document.querySelector(".toast")?.remove();
+  const t = document.createElement("div");
+  t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t);
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.remove(), 2400);
+}
+
+/* ---------- Événements ---------- */
+document.addEventListener("click", (e) => {
+  const el = e.target.closest("[data-action]");
+  if (!el) return;
+  const id = el.dataset.id;
+  switch (el.dataset.action) {
+    case "nav": ui.view = el.dataset.view; ui.editSession = null; window.scrollTo(0, 0); render(); break;
+    case "select": ui.selected = id; store.set(K.selected, id); render(); break;
+    case "start": if (ui.selected) startTimer(ui.selected); break;
+    case "start-from": ui.selected = id; store.set(K.selected, id); startTimer(id); ui.view = "timer"; render(); break;
+    case "stop": stopTimer(); break;
+    case "cancel": if (confirm("Annuler cette session ? Le temps en cours ne sera pas enregistré.")) cancelTimer(); break;
+    case "save-stop-note": {
+      const v = document.getElementById("stop-note")?.value || "";
+      const sid = ui.justStopped; ui.justStopped = null;
+      if (sid) updateSession(sid, { note: v.trim() });
+      toast("Note enregistrée");
+      break;
+    }
+    case "dismiss-stopped": ui.justStopped = null; render(); break;
+    case "filter": ui.filter = el.dataset.filter; render(); break;
+    case "open": ui.view = "project"; ui.projectId = id; ui.editSession = null; window.scrollTo(0, 0); render(); break;
+    case "finish": {
+      const st = projectStats(id);
+      updateProject(id, { status: "done", finishedAt: now() });
+      toast(`Œuvre terminée en ${st.count} session${st.count > 1 ? "s" : ""} · ${fmtDur(st.total)}`);
+      break;
+    }
+    case "reopen": updateProject(id, { status: "active", finishedAt: null }); break;
+    case "rename": {
+      const p = getProject(id);
+      const name = prompt("Nouveau nom du projet", p.name);
+      if (name && name.trim()) {
+        const disc = prompt("Discipline", p.discipline || "");
+        updateProject(id, { name: name.trim(), discipline: disc === null ? p.discipline : disc.trim() });
+      }
+      break;
+    }
+    case "delete-project": {
+      const p = getProject(id);
+      if (confirm(`Supprimer « ${p.name} » et ses sessions ?`)) {
+        const t = now();
+        data.sessions = data.sessions.map((s) => (s.projectId === id ? { ...s, deleted: true, updatedAt: t } : s));
+        ui.view = "projects";
+        updateProject(id, { deleted: true });
+      }
+      break;
+    }
+    case "edit-session": ui.editSession = ui.editSession === id ? null : id; render(); break;
+    case "delete-session": if (confirm("Supprimer cette session ?")) { ui.editSession = null; updateSession(id, { deleted: true }); } break;
+    case "sync-now": if (!isConfigured()) { ui.view = "settings"; render(); } else sync(); break;
+    case "export": {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `timer-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      break;
+    }
+  }
+});
+
+document.addEventListener("submit", (e) => {
+  const f = e.target.closest("form[data-form]");
+  if (!f) return;
+  e.preventDefault();
+  const fd = new FormData(f);
+  switch (f.dataset.form) {
+    case "new-project": {
+      const name = (fd.get("name") || "").toString();
+      if (!name.trim()) return;
+      addProject(name, (fd.get("discipline") || "").toString());
+      ui.filter = "active";
+      toast("Projet créé");
+      render();
+      break;
+    }
+    case "edit-session":
+    case "add-session": {
+      const start = fromLocalInput(fd.get("start")), end = fromLocalInput(fd.get("end"));
+      if (!(end > start)) { toast("La fin doit être après le début"); return; }
+      const note = (fd.get("note") || "").toString().trim();
+      if (f.dataset.form === "edit-session") {
+        ui.editSession = null;
+        updateSession(f.dataset.id, { start, end, note });
+      } else {
+        const t = now();
+        data.sessions.push({ id: uid(), projectId: f.dataset.id, start, end, note, createdAt: t, updatedAt: t });
+        ui.editSession = null;
+        commit();
+      }
+      toast("Session enregistrée");
+      break;
+    }
+    case "settings": {
+      config = {
+        owner: fd.get("owner").toString().trim(),
+        repo: fd.get("repo").toString().trim(),
+        path: fd.get("path").toString().trim() || "data.json",
+        token: fd.get("token").toString().trim(),
+      };
+      store.set(K.config, config);
+      sync();
+      break;
+    }
+  }
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && e.target.id === "stop-note") { e.preventDefault(); document.querySelector('[data-action="save-stop-note"]')?.click(); }
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") { render(); if (isConfigured()) scheduleSync(100); }
+});
+window.addEventListener("online", () => scheduleSync(100));
+
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+
+render();
+if (isConfigured()) sync(); else setSyncState("local");
+</script>
+</body>
+</html>
