@@ -734,6 +734,7 @@ function viewProject() {
         ${draft.map((text, i) => `<div class="idea">
           <span class="text caption">${esc(text)}</span>
           <button class="btn ghost" data-action="keep-idea" data-i="${i}">Garder</button>
+          <button class="icon-btn" data-action="discard-idea" data-i="${i}" aria-label="Supprimer cette idée">×</button>
         </div>`).join("")}` : ""}
       <div class="seg count" role="group" aria-label="Nombre d'idées">
         ${[1, 2, 3, 4, 5].map((n) => `<button data-action="idea-count" data-n="${n}" aria-pressed="${n === ui.ideaCount}">${n}</button>`).join("")}
@@ -870,6 +871,11 @@ document.addEventListener("click", (e) => {
     case "gen-ideas": {
       const p = getProject(id);
       if (p) { ui.ideaDraft = { projectId: id, list: generateIdeas(p, ui.ideaCount) }; render(); }
+      break;
+    }
+    case "discard-idea": {
+      const d = ui.ideaDraft;
+      if (d) { d.list = d.list.filter((_, i) => i !== Number(el.dataset.i)); render(); }
       break;
     }
     case "keep-idea": {
