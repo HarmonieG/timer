@@ -175,6 +175,15 @@
   .sess .dur { font-family: "Fredoka", sans-serif; font-weight: 600; white-space: nowrap; }
   .sess-edit { padding: 0 16px 16px; }
 
+  /* Idées */
+  .seg.count { margin-bottom: 0; background: var(--bg); }
+  .idea { display: flex; align-items: center; gap: 10px; }
+  .idea .text { flex: 1; min-width: 0; }
+  .idea + .idea { border-top: 1px solid var(--line); padding-top: 12px; }
+  .idea .btn { padding: 8px 12px; font-size: 14px; flex: none; }
+  .icon-btn { background: none; border: 0; color: var(--faint); font-size: 20px; line-height: 1; padding: 4px 8px; flex: none; }
+  .ideas-kept { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+
   .toast {
     position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 84px); transform: translateX(-50%);
     background: var(--paper); color: var(--bg); padding: 10px 16px; border-radius: 12px; font-size: 14px; font-weight: 500;
@@ -207,7 +216,7 @@
 "use strict";
 
 /* ---------- Stockage local (config + cache hors ligne) ---------- */
-const K = { config: "ct.config", data: "ct.data", dirty: "ct.dirty", selected: "ct.selected", lastSync: "ct.lastSync" };
+const K = { config: "ct.config", data: "ct.data", dirty: "ct.dirty", selected: "ct.selected", lastSync: "ct.lastSync", ideaCount: "ct.ideaCount" };
 const store = {
   get(k, fallback) { try { const v = localStorage.getItem(k); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
@@ -227,6 +236,8 @@ const ui = {
   selected: store.get(K.selected, null),
   editSession: null,
   justStopped: null,
+  ideaCount: store.get(K.ideaCount, 3),
+  ideaDraft: null, // { projectId, list: [texte, …] } : idées générées pas encore gardées
   syncState: "local",
   syncError: "",
 };
@@ -363,6 +374,74 @@ function stopTimer() {
 function cancelTimer() {
   data.running = { projectId: null, start: null, updatedAt: now() };
   commit();
+}
+function keepIdea(projectId, text) {
+  const p = getProject(projectId);
+  if (!p) return;
+  updateProject(projectId, { ideas: [...(p.ideas || []), { id: uid(), text, createdAt: now() }] });
+}
+function dropIdea(projectId, ideaId) {
+  const p = getProject(projectId);
+  if (!p) return;
+  updateProject(projectId, { ideas: (p.ideas || []).filter((i) => i.id !== ideaId) });
+}
+
+/* ---------- Générateur d'idées ---------- */
+// Chaque famille : un test sur la discipline (ou le nom), des listes de mots, et des modèles.
+// Dans un modèle, {cle} pioche un mot au hasard dans la liste, {Cle} fait pareil avec une majuscule.
+const IDEA_FAMILIES = [
+  {
+    match: /pixel/i,
+    parts: {
+      sujet: ["une échoppe de potions", "un chat endormi", "une forêt en automne", "un vaisseau spatial", "une tasse de café fumante", "une chambre d'ado", "un phare dans la tempête", "une épée légendaire", "un marché de nuit", "une station de métro", "un coffre au trésor", "un personnage qui marche (4 images)", "une boutique de ramen", "une serre", "un champignon lumineux", "un slime qui rebondit"],
+      taille: ["16×16", "32×32", "48×48", "64×64", "128×128"],
+      palette: ["4 couleurs", "8 couleurs", "la palette PICO-8", "la palette Game Boy (4 verts)", "16 couleurs", "une seule teinte + noir et blanc"],
+      ambiance: ["au coucher du soleil", "sous la pluie", "de nuit, éclairé au néon", "en hiver", "à l'aube", "dans le brouillard", "vu en isométrique", "vu de dessus"],
+    },
+    templates: ["{Sujet} {ambiance}, en {taille}", "{Sujet} en {taille}, avec {palette}", "{Sujet} {ambiance}, avec {palette}"],
+  },
+  {
+    match: /jeu|game|jam|proto/i,
+    parts: {
+      genre: ["un jeu de plateforme", "un roguelike", "un jeu de gestion", "un puzzle game", "un jeu de rythme", "un jeu narratif", "un shoot'em up", "un jeu d'exploration", "un tower defense", "un jeu de cartes", "un jeu coopératif à deux", "un idle game"],
+      mecanique: ["on ne peut pas sauter", "le temps n'avance que quand on bouge", "chaque mort change la carte", "on contrôle deux personnages à la fois", "la lumière est une ressource", "on joue le méchant", "on construit le niveau en jouant", "la gravité s'inverse", "on n'a qu'un seul bouton", "les ennemis deviennent des alliés", "tout se joue en 60 secondes", "le son guide le joueur"],
+      univers: ["sous l'océan", "dans une cuisine géante", "sur une planète en ruine", "dans un rêve", "dans une bibliothèque infinie", "dans un jardin miniature", "dans une ville de nuit", "sur le dos d'une baleine", "dans une usine abandonnée", "dans un Moyen Âge façon cartoon"],
+      heros: ["une petite graine", "un facteur", "un fantôme timide", "une lampe de poche", "un escargot", "une apprentie sorcière", "un robot aspirateur", "un renard", "un chevalier sans épée"],
+    },
+    templates: ["{Genre} où {mecanique}", "{Genre} {univers}, avec {heros} comme héros", "{Genre} {univers} où {mecanique}", "Incarner {heros} {univers} : {mecanique}"],
+  },
+  {
+    match: /figurine|sculpt|mini|warhammer|peint/i,
+    parts: {
+      sujet: ["un chevalier", "une sorcière", "un gobelin marchand", "un robot jardinier", "une pirate", "un petit dragon", "un moine guerrier", "un golem de mousse", "un samouraï", "une exploratrice", "un nain forgeron", "un champignon animé", "un mécha éclaireur", "une chasseuse de primes", "un vieux magicien", "un chat mercenaire", "une reine déchue", "un orc cuisinier"],
+      trait: ["fatigué après la bataille", "en pleine incantation", "qui porte un trésor trop lourd", "surpris par la pluie", "en armure rouillée", "couvert de lierre", "en tenue de fête", "blessé mais debout", "qui fait une pause", "en pleine course", "qui se cache", "aux couleurs de l'automne"],
+      decor: ["sur un socle de ruines", "sur un rocher moussu", "dans la neige", "sur un ponton en bois", "au milieu de champignons", "sur des pavés mouillés", "dans un désert de sable rouge", "sur une épave", "dans une forge", "au bord d'un marais"],
+      contrainte: ["palette limitée à 3 couleurs", "éclairage de bougie (OSL)", "métal peint façon NMM", "ambiance nocturne", "tons froids uniquement", "effet usé et sale", "couleurs complémentaires", "une seule couleur vive"],
+    },
+    templates: ["{Sujet} {trait}, {decor}", "{Sujet} {decor}, {contrainte}", "{Sujet} {trait}, {contrainte}"],
+  },
+  {
+    match: /.*/, // Toutes les autres disciplines
+    parts: {
+      sujet: ["un phare", "une cabane dans les arbres", "un marché flottant", "un vieux robot", "une horloge", "un jardin secret", "une bibliothèque", "un voyageur", "une créature des marais", "un train de nuit", "une fête foraine", "une île minuscule"],
+      theme: ["l'oubli", "le passage du temps", "la solitude", "l'amitié", "la métamorphose", "le voyage", "la nostalgie", "la curiosité", "la réparation", "le silence"],
+      contrainte: ["en 3 couleurs", "sans aucune ligne droite", "en une seule session", "avec un contraste fort", "dans un format tout en longueur", "inspiré d'un souvenir d'enfance", "avec un seul point de lumière", "en version minuscule"],
+    },
+    templates: ["{Sujet} sur le thème de {theme}", "{Sujet}, {contrainte}", "{Theme} à travers {sujet}, {contrainte}"],
+  },
+];
+const pick = (list) => list[Math.floor(Math.random() * list.length)];
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+function generateIdeas(project, count) {
+  const family = IDEA_FAMILIES.find((f) => f.match.test(`${project.discipline || ""} ${project.name}`));
+  const out = new Set();
+  for (let tries = 0; out.size < count && tries < 100; tries++) {
+    out.add(pick(family.templates).replace(/\{(\w+)\}/g, (_, key) => {
+      const word = pick(family.parts[key.toLowerCase()]);
+      return key[0] === key[0].toUpperCase() ? capitalize(word) : word;
+    }));
+  }
+  return [...out];
 }
 
 /* ---------- Synchro GitHub ---------- */
@@ -614,6 +693,26 @@ function viewProject() {
   const addOpen = ui.editSession === "__new";
   const defEnd = now(), defStart = defEnd - 3600000;
 
+  const kept = p.ideas || [];
+  const draft = ui.ideaDraft && ui.ideaDraft.projectId === p.id ? ui.ideaDraft.list : [];
+  const ideas = `
+    <div class="section-title">Idées</div>
+    <div class="card stack">
+      ${kept.map((i) => `<div class="idea">
+        <span class="text">${esc(i.text)}</span>
+        <button class="icon-btn" data-action="drop-idea" data-id="${esc(i.id)}" aria-label="Retirer cette idée">×</button>
+      </div>`).join("")}
+      ${draft.length ? `${kept.length ? `<p class="ideas-kept">Nouvelles idées</p>` : ""}
+        ${draft.map((text, i) => `<div class="idea">
+          <span class="text caption">${esc(text)}</span>
+          <button class="btn ghost" data-action="keep-idea" data-i="${i}">Garder</button>
+        </div>`).join("")}` : ""}
+      <div class="seg count" role="group" aria-label="Nombre d'idées">
+        ${[1, 2, 3, 4, 5].map((n) => `<button data-action="idea-count" data-n="${n}" aria-pressed="${n === ui.ideaCount}">${n}</button>`).join("")}
+      </div>
+      <button class="btn full" data-action="gen-ideas" data-id="${p.id}">Générer ${ui.ideaCount} idée${ui.ideaCount > 1 ? "s" : ""}</button>
+    </div>`;
+
   return `
     <button class="back" data-action="nav" data-view="projects">‹ Projets</button>
     <div class="detail-head">
@@ -635,6 +734,7 @@ function viewProject() {
       <button class="btn ghost" data-action="rename" data-id="${p.id}">Renommer</button>
       <button class="btn danger" data-action="delete-project" data-id="${p.id}" ${live ? "disabled" : ""}>Supprimer</button>
     </div>
+    ${ideas}
     <div class="section-title">Sessions</div>
     ${sessions || `<p class="caption">Aucune session pour l'instant.</p>`}
     <div style="margin-top:12px">
@@ -741,6 +841,21 @@ document.addEventListener("click", (e) => {
       }
       break;
     }
+    case "idea-count": ui.ideaCount = Number(el.dataset.n); store.set(K.ideaCount, ui.ideaCount); render(); break;
+    case "gen-ideas": {
+      const p = getProject(id);
+      if (p) { ui.ideaDraft = { projectId: id, list: generateIdeas(p, ui.ideaCount) }; render(); }
+      break;
+    }
+    case "keep-idea": {
+      const d = ui.ideaDraft;
+      const text = d && d.list[Number(el.dataset.i)];
+      if (!text) break;
+      d.list = d.list.filter((t) => t !== text);
+      keepIdea(d.projectId, text);
+      break;
+    }
+    case "drop-idea": dropIdea(ui.projectId, id); break;
     case "edit-session": ui.editSession = ui.editSession === id ? null : id; render(); break;
     case "delete-session": if (confirm("Supprimer cette session ?")) { ui.editSession = null; updateSession(id, { deleted: true }); } break;
     case "sync-now": if (!isConfigured()) { ui.view = "settings"; render(); } else sync(); break;
@@ -765,8 +880,11 @@ document.addEventListener("submit", (e) => {
     case "new-project": {
       const name = (fd.get("name") || "").toString();
       if (!name.trim()) return;
-      addProject(name, (fd.get("discipline") || "").toString());
+      const p = addProject(name, (fd.get("discipline") || "").toString());
+      // On ouvre directement la fiche du projet, pour pouvoir générer des idées tout de suite.
       ui.filter = "active";
+      ui.view = "project"; ui.projectId = p.id; ui.editSession = null; ui.ideaDraft = null;
+      window.scrollTo(0, 0);
       toast("Projet créé");
       render();
       break;
