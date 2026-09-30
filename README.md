@@ -11,7 +11,11 @@ Chrono de sessions de création, par projet. S'installe sur iPhone depuis Safari
 - Fiche projet : nombre de sessions, temps total, moyenne par session, dates.
 - **Marquer comme terminé** : l'œuvre passe dans « Terminés » avec son bilan (ex. « 9 sessions · 11 h 40 »).
 - Ajouter une session oubliée, corriger ou supprimer une session.
-- **Idées** : dans la fiche projet, choisir de 1 à 5 puis **Générer** propose des sujets au hasard selon la discipline (des idées générales pour « Autre »). **Garder** enregistre une idée dans le projet, **×** la retire. Tout se passe sur le téléphone, sans réseau ni service externe.
+- **Idées** : dans la fiche projet, choisir une ambiance (Libre, Cosy, Sombre, Drôle, Épique, Étrange) et un nombre de 1 à 5, puis **Générer**. Les idées dépendent de la discipline et mélangent amorces simples et consignes plus complexes. **Garder** enregistre une idée, **×** l'écarte. Tout se passe sur le téléphone, sans réseau ni service externe.
+- **Sujet** : l'étoile ☆ à côté d'une idée gardée en fait le sujet du projet. Il s'affiche en haut de la fiche et sur l'écran du chrono.
+- **Bilan** : temps de la semaine et du mois, série de jours d'affilée et record, graphique des 7 derniers jours, répartition par discipline et projets les plus travaillés.
+- **Session oubliée** : après 4 h de chrono, l'app propose de corriger l'heure de fin. **Terminer à une autre heure** permet aussi de le faire à tout moment.
+- Sur ordinateur, le chrono s'affiche dans le titre de l'onglet.
 - Hors ligne : tout reste sur le téléphone et part sur GitHub au retour du réseau.
 
 ## Installation (environ 10 minutes, une seule fois)
@@ -89,7 +93,8 @@ Remplace `index.html` (ou les autres fichiers) dans le dépôt `timer`. L'app r�
   "projects": [
     { "id": "…", "name": "Figurine Chopper", "discipline": "Figurine | Illustration | Jeu | Pixel art | Autre",
       "status": "active | done", "createdAt": 0, "finishedAt": null, "updatedAt": 0,
-      "ideas": [ { "id": "…", "text": "Un nain forgeron dans une forge", "createdAt": 0 } ] }
+      "ideas": [ { "id": "…", "text": "Un nain forgeron dans une forge", "createdAt": 0 } ],
+      "subject": "Un nain forgeron dans une forge" }
   ],
   "sessions": [
     { "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "createdAt": 0, "updatedAt": 0 }

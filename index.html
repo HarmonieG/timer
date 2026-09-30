@@ -192,6 +192,32 @@
   .idea .btn { padding: 8px 12px; font-size: 14px; flex: none; }
   .icon-btn { background: none; border: 0; color: var(--faint); font-size: 20px; line-height: 1; padding: 4px 8px; flex: none; }
   .ideas-kept { font-size: 13px; color: var(--muted); margin: 4px 0 0; }
+  .idea.chosen .text { font-weight: 600; }
+  .icon-btn.star { font-size: 18px; }
+  .icon-btn.star[aria-pressed="true"] { color: var(--teal); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chips button { border: 1px solid var(--line); background: none; color: var(--muted); border-radius: 999px; padding: 6px 12px; font-size: 14px; }
+  .chips button[aria-pressed="true"] { background: var(--paper); border-color: var(--paper); color: var(--bg); font-weight: 600; }
+  .subject { margin-top: 10px; padding: 10px 12px; border-left: 3px solid var(--teal); background: var(--surface); border-radius: 0 10px 10px 0; font-size: 15px; }
+  .subject .k { display: block; font-size: 12px; color: var(--muted); }
+  .subject-line { font-size: 15px; margin-top: 6px; }
+
+  /* Session longue */
+  .warn-card { border: 1px solid var(--coral); margin-top: 20px; }
+  .warn-card .title { font-size: 18px; }
+
+  /* Bilan */
+  .week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; align-items: end; height: 150px; border-bottom: 1px solid var(--line); }
+  .week .col { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; gap: 4px; }
+  .week .bar { width: 60%; max-width: 24px; background: var(--teal); border-radius: 4px 4px 0 0; }
+  .week .v { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .week-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 6px; text-align: center; font-size: 12px; color: var(--muted); }
+  .week-days .today { color: var(--paper); font-weight: 600; }
+  .hbar + .hbar { margin-top: 12px; }
+  .hbar .lbl { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; margin-bottom: 5px; }
+  .hbar .lbl .val { color: var(--muted); white-space: nowrap; }
+  .hbar .track { height: 8px; background: var(--surface-2); border-radius: 4px; }
+  .hbar .fill { height: 100%; min-width: 4px; background: var(--teal); border-radius: 4px; }
 
   .toast {
     position: fixed; left: 50%; bottom: calc(var(--safe-bottom) + 84px); transform: translateX(-50%);
@@ -218,6 +244,7 @@
 <nav class="tabs">
   <button data-action="nav" data-view="timer">Timer</button>
   <button data-action="nav" data-view="projects">Projets</button>
+  <button data-action="nav" data-view="stats">Bilan</button>
   <button data-action="nav" data-view="settings">Réglages</button>
 </nav>
 
@@ -225,7 +252,7 @@
 "use strict";
 
 /* ---------- Stockage local (config + cache hors ligne) ---------- */
-const K = { config: "ct.config", data: "ct.data", dirty: "ct.dirty", selected: "ct.selected", lastSync: "ct.lastSync", ideaCount: "ct.ideaCount" };
+const K = { config: "ct.config", data: "ct.data", dirty: "ct.dirty", selected: "ct.selected", lastSync: "ct.lastSync", ideaCount: "ct.ideaCount", ideaMood: "ct.ideaMood", longDismissed: "ct.longDismissed", statsPeriod: "ct.statsPeriod" };
 const store = {
   get(k, fallback) { try { const v = localStorage.getItem(k); return v === null ? fallback : JSON.parse(v); } catch { return fallback; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
@@ -246,6 +273,9 @@ const ui = {
   editSession: null,
   justStopped: null,
   ideaCount: store.get(K.ideaCount, 3),
+  ideaMood: store.get(K.ideaMood, ""),
+  stopAt: null, // heure de fin proposée quand on corrige la fin d'une session en cours
+  statsPeriod: store.get(K.statsPeriod, "month"),
   ideaDraft: null, // { projectId, list: [texte, …] } : idées générées pas encore gardées
   syncState: "local",
   syncError: "",
@@ -385,10 +415,13 @@ function startTimer(projectId) {
   ui.justStopped = null;
   commit();
 }
-function stopTimer() {
+// Au-delà de cette durée, l'app demande si la session n'a pas été oubliée.
+const LONG_SESSION_MS = 4 * 3600000;
+function stopTimer(end = now()) {
   if (!isRunning()) return;
   const t = now();
-  const s = { id: uid(), projectId: data.running.projectId, start: data.running.start, end: t, note: "", createdAt: t, updatedAt: t };
+  ui.stopAt = null;
+  const s = { id: uid(), projectId: data.running.projectId, start: data.running.start, end, note: "", createdAt: t, updatedAt: t };
   data.sessions.push(s);
   data.running = { projectId: null, start: null, updatedAt: t };
   ui.justStopped = s.id;
@@ -406,68 +439,225 @@ function keepIdea(projectId, text) {
 function dropIdea(projectId, ideaId) {
   const p = getProject(projectId);
   if (!p) return;
-  updateProject(projectId, { ideas: (p.ideas || []).filter((i) => i.id !== ideaId) });
+  const idea = (p.ideas || []).find((i) => i.id === ideaId);
+  const patch = { ideas: (p.ideas || []).filter((i) => i.id !== ideaId) };
+  if (idea && p.subject === idea.text) patch.subject = null;
+  updateProject(projectId, patch);
 }
 
 /* ---------- Générateur d'idées ---------- */
-// Une famille par discipline : des listes de mots et des modèles.
+// Une famille par discipline : des listes de mots et des modèles de phrases.
 // Dans un modèle, {cle} pioche un mot au hasard dans la liste, {Cle} fait pareil avec une majuscule.
+// Une liste peut être simple (neutre) ou découpée par ambiance : { _: neutre, cosy: […], sombre: […], … }.
+// Les modèles sont rangés par niveau : simple (une amorce), moyen, complexe (plusieurs contraintes).
+const MOODS = [
+  { id: "", label: "Libre" },
+  { id: "cosy", label: "Cosy" },
+  { id: "sombre", label: "Sombre" },
+  { id: "drole", label: "Drôle" },
+  { id: "epique", label: "Épique" },
+  { id: "etrange", label: "Étrange" },
+];
+// Rebondissements communs à toutes les disciplines, pour les idées complexes.
+const TWISTS = {
+  _: ["un détail caché est à trouver", "tout est vu par un personnage secondaire", "l'image raconte une histoire sans un mot", "un contraste d'échelle surprend le regard"],
+  cosy: ["tout doit donner envie de s'y blottir", "une petite lumière chaleureuse brille quelque part"],
+  sombre: ["quelque chose cloche dans le décor", "on devine une menace hors du cadre"],
+  drole: ["un détail absurde se cache quelque part", "on est juste avant la catastrophe"],
+  epique: ["tout est à une échelle démesurée", "c'est l'instant juste avant la victoire"],
+  etrange: ["une règle de la réalité ne marche plus", "rien n'est à la bonne taille"],
+};
 const IDEA_FAMILIES = {
-  "Pixel art": {
-    parts: {
-      sujet: ["une échoppe de potions", "un chat endormi", "une forêt en automne", "un vaisseau spatial", "une tasse de café fumante", "une chambre d'ado", "un phare dans la tempête", "une épée légendaire", "un marché de nuit", "une station de métro", "un coffre au trésor", "un personnage qui marche (4 images)", "une boutique de ramen", "une serre", "un champignon lumineux", "un slime qui rebondit"],
-      taille: ["16×16", "32×32", "48×48", "64×64", "128×128"],
-      palette: ["4 couleurs", "8 couleurs", "la palette PICO-8", "la palette Game Boy (4 verts)", "16 couleurs", "une seule teinte + noir et blanc"],
-      ambiance: ["au coucher du soleil", "sous la pluie", "de nuit, éclairé au néon", "en hiver", "à l'aube", "dans le brouillard", "vu en isométrique", "vu de dessus"],
-    },
-    templates: ["{Sujet} {ambiance}, en {taille}", "{Sujet} en {taille}, avec {palette}", "{Sujet} {ambiance}, avec {palette}"],
-  },
-  "Jeu": {
-    parts: {
-      genre: ["un jeu de plateforme", "un roguelike", "un jeu de gestion", "un puzzle game", "un jeu de rythme", "un jeu narratif", "un shoot'em up", "un jeu d'exploration", "un tower defense", "un jeu de cartes", "un jeu coopératif à deux", "un idle game"],
-      mecanique: ["on ne peut pas sauter", "le temps n'avance que quand on bouge", "chaque mort change la carte", "on contrôle deux personnages à la fois", "la lumière est une ressource", "on joue le méchant", "on construit le niveau en jouant", "la gravité s'inverse", "on n'a qu'un seul bouton", "les ennemis deviennent des alliés", "tout se joue en 60 secondes", "le son guide le joueur"],
-      univers: ["sous l'océan", "dans une cuisine géante", "sur une planète en ruine", "dans un rêve", "dans une bibliothèque infinie", "dans un jardin miniature", "dans une ville de nuit", "sur le dos d'une baleine", "dans une usine abandonnée", "dans un Moyen Âge façon cartoon"],
-      heros: ["une petite graine", "un facteur", "un fantôme timide", "une lampe de poche", "un escargot", "une apprentie sorcière", "un robot aspirateur", "un renard", "un chevalier sans épée"],
-    },
-    templates: ["{Genre} où {mecanique}", "{Genre} {univers}, avec {heros} comme héros", "{Genre} {univers} où {mecanique}", "Incarner {heros} {univers} : {mecanique}"],
-  },
   "Figurine": {
     parts: {
-      sujet: ["un chevalier", "une sorcière", "un gobelin marchand", "un robot jardinier", "une pirate", "un petit dragon", "un moine guerrier", "un golem de mousse", "un samouraï", "une exploratrice", "un nain forgeron", "un champignon animé", "un mécha éclaireur", "une chasseuse de primes", "un vieux magicien", "un chat mercenaire", "une reine déchue", "un orc cuisinier"],
-      trait: ["fatigué après la bataille", "en pleine incantation", "qui porte un trésor trop lourd", "surpris par la pluie", "en armure rouillée", "couvert de lierre", "en tenue de fête", "blessé mais debout", "qui fait une pause", "en pleine course", "qui se cache", "aux couleurs de l'automne"],
-      decor: ["sur un socle de ruines", "sur un rocher moussu", "dans la neige", "sur un ponton en bois", "au milieu de champignons", "sur des pavés mouillés", "dans un désert de sable rouge", "sur une épave", "dans une forge", "au bord d'un marais"],
-      contrainte: ["palette limitée à 3 couleurs", "éclairage de bougie (OSL)", "métal peint façon NMM", "ambiance nocturne", "tons froids uniquement", "effet usé et sale", "couleurs complémentaires", "une seule couleur vive"],
+      sujet: {
+        _: ["un chevalier", "une sorcière", "un gobelin marchand", "un robot jardinier", "une pirate", "un petit dragon", "un moine guerrier", "un golem de mousse", "un samouraï", "une exploratrice", "un nain forgeron", "un champignon animé", "un mécha éclaireur", "une chasseuse de primes", "un vieux magicien", "un chat mercenaire", "une reine déchue", "un orc cuisinier"],
+        cosy: ["un hérisson boulanger", "une grand-mère sorcière", "un ours en pyjama", "un gnome jardinier", "une tortue libraire"],
+        sombre: ["un chevalier maudit", "une nécromancienne", "un corbeau géant", "un spectre en armure", "un cultiste masqué"],
+        drole: ["un gobelin en vacances", "un dragon qui a peur des souris", "un nain au régime", "un squelette qui danse", "un pigeon en armure"],
+        epique: ["un roi-dragon", "une générale en armure dorée", "un titan de pierre", "un paladin qui charge", "une reine guerrière"],
+        etrange: ["un poisson qui marche", "une statue qui pleure", "un arbre couvert d'yeux", "une horloge vivante", "un chevalier sans tête très poli"],
+      },
+      trait: {
+        _: ["fatigué après la bataille|fatiguée après la bataille", "en pleine incantation", "qui porte un trésor trop lourd", "surpris par la pluie|surprise par la pluie", "en armure rouillée", "couvert de lierre|couverte de lierre", "en tenue de fête", "blessé mais debout|blessée mais debout", "qui fait une pause", "en pleine course", "qui se cache", "aux couleurs de l'automne"],
+        cosy: ["emmitouflé dans une écharpe|emmitouflée dans une écharpe", "qui boit un chocolat chaud", "qui fait la sieste", "qui prépare des gâteaux"],
+        sombre: ["couvert de cicatrices|couverte de cicatrices", "qui murmure une malédiction", "à moitié avalé par la brume|à moitié avalée par la brume", "enchaîné|enchaînée"],
+        drole: ["coincé dans son armure|coincée dans son armure", "qui vient de rater son sort", "avec une tasse sur la tête", "poursuivi par une poule|poursuivie par une poule"],
+        epique: ["qui brandit une relique", "debout face à l'orage", "au sommet de sa gloire", "qui lance le dernier assaut"],
+        etrange: ["dont l'ombre ne suit pas", "fait de verre|faite de verre", "qui flotte au-dessus du sol", "la tête en bas"],
+      },
+      decor: {
+        _: ["sur un socle de ruines", "sur un rocher moussu", "dans la neige", "sur un ponton en bois", "au milieu de champignons", "sur des pavés mouillés", "dans un désert de sable rouge", "sur une épave", "dans une forge", "au bord d'un marais"],
+        cosy: ["devant une cheminée", "dans une cuisine en bois", "sur un tapis de feuilles mortes"],
+        sombre: ["dans un cimetière", "au milieu d'ossements", "dans une crypte inondée"],
+        drole: ["sur une pile de chaussettes", "dans une baignoire", "sur un gâteau d'anniversaire"],
+        epique: ["au sommet d'une tour en ruine", "sur un champ de bataille", "sur le crâne d'un dragon"],
+        etrange: ["sur une main géante", "dans une bulle de savon", "sur un escalier qui ne mène nulle part"],
+      },
+      contrainte: {
+        _: ["palette limitée à 3 couleurs", "éclairage de bougie (OSL)", "métal peint façon NMM", "ambiance nocturne", "tons froids uniquement", "effet usé et sale", "couleurs complémentaires", "une seule couleur vive"],
+        cosy: ["tons chauds uniquement", "lumière de lanterne"],
+        sombre: ["presque monochrome", "éclairage vert blafard"],
+        drole: ["couleurs saturées façon cartoon"],
+        epique: ["reflets dorés partout", "lumière dramatique venue du haut"],
+        etrange: ["couleurs inversées (peau bleue, ciel orange)", "reflets irisés"],
+      },
     },
-    templates: ["{Sujet} {trait}, {decor}", "{Sujet} {decor}, {contrainte}", "{Sujet} {trait}, {contrainte}"],
+    templates: {
+      simple: ["{Sujet}", "{Sujet} {trait}", "{Sujet} {decor}"],
+      moyen: ["{Sujet} {trait}, {decor}", "{Sujet} {decor}, {contrainte}", "{Sujet} {trait}, {contrainte}"],
+      complexe: ["{Sujet} {trait}, {decor}, {contrainte} : {twist}", "Une saynète : {sujet} et {sujet} {decor}, {contrainte}", "{Sujet} {trait} {decor}, {contrainte}, sur un socle qui raconte une histoire"],
+    },
   },
   "Illustration": {
     parts: {
-      sujet: ["une libraire", "un renard voyageur", "une sorcière des marais", "un vieux marin", "une baleine volante", "un enfant et son robot", "une maison sur pattes", "un dragon endormi", "une jardinière", "un musicien de rue", "un chat astronaute", "une gardienne de phare", "un géant de pierre", "une ville perchée"],
-      scene: ["qui lit sous un arbre", "au milieu d'un marché", "sous une pluie d'étoiles", "dans une cuisine en désordre", "au sommet d'une falaise", "pendant une tempête", "dans un train de nuit", "au bord d'un lac gelé", "dans une serre envahie", "sur un toit, au crépuscule"],
+      sujet: {
+        _: ["une libraire", "un renard voyageur", "une sorcière des marais", "un vieux marin", "une baleine volante", "un enfant et son robot", "une maison sur pattes", "un dragon endormi", "une jardinière", "un musicien de rue", "un chat astronaute", "une gardienne de phare", "un géant de pierre", "une ville perchée"],
+        cosy: ["une souris couturière", "un salon de thé dans la forêt", "un chat roulé en boule", "une grand-mère dans son potager"],
+        sombre: ["une maison abandonnée", "un loup aux yeux brillants", "une forêt sans oiseaux", "une poupée oubliée"],
+        drole: ["un chat qui fait ses comptes", "un fantôme qui a peur du noir", "une licorne en retard", "un chevalier accompagné de sa mère"],
+        epique: ["une armée de nuages", "un dragon au-dessus d'une ville", "une héroïne au sommet d'une montagne", "une cité céleste"],
+        etrange: ["une baleine dans un salon", "un homme à tête de lampe", "une forêt de mains", "une lune posée dans un champ"],
+      },
+      scene: {
+        _: ["qui lit sous un arbre", "au milieu d'un marché", "sous une pluie d'étoiles", "dans une cuisine en désordre", "au sommet d'une falaise", "pendant une tempête", "dans un train de nuit", "au bord d'un lac gelé", "dans une serre envahie", "sur un toit, au crépuscule"],
+        cosy: ["sous un plaid, un jour de pluie", "autour d'un feu de camp", "dans une cabane pleine de livres"],
+        sombre: ["dans la brume du soir", "sous une lune rouge", "au fond d'un puits"],
+        drole: ["au pire moment possible", "pendant un pique-nique raté", "coincé dans un ascenseur"],
+        epique: ["face à une vague immense", "au lever d'un soleil gigantesque", "au cœur d'une bataille"],
+        etrange: ["dans une pièce qui rétrécit", "sous une pluie qui tombe vers le haut", "dans un reflet"],
+      },
       style: ["à l'aquarelle", "à l'encre seule", "en couleurs pastel", "façon livre jeunesse", "en noir et blanc", "façon affiche vintage", "façon carnet de croquis", "en ombres chinoises", "au crayon de couleur"],
-      contrainte: ["en contre-plongée", "avec une seule source de lumière", "en 3 couleurs", "avec beaucoup de vide", "en format carré", "vu de très près", "vu de très loin", "avec un cadre décoratif"],
+      contrainte: ["en contre-plongée", "avec une seule source de lumière", "en 3 couleurs", "avec beaucoup de vide", "en format carré", "en gros plan", "en plan très large", "avec un cadre décoratif"],
     },
-    templates: ["{Sujet} {scene}, {style}", "{Sujet} {scene}, {contrainte}", "{Sujet} {style}, {contrainte}"],
+    templates: {
+      simple: ["{Sujet}", "{Sujet} {scene}", "{Sujet} {style}"],
+      moyen: ["{Sujet} {scene}, {style}", "{Sujet} {scene}, {contrainte}", "{Sujet} {style}, {contrainte}"],
+      complexe: ["{Sujet} {scene}, {style}, {contrainte} : {twist}", "Diptyque avant / après : {sujet} {scene}, {style}", "{Sujet} et {sujet} {scene}, {style}, {contrainte}"],
+    },
+  },
+  "Jeu": {
+    parts: {
+      genre: ["jeu de plateforme", "roguelike", "jeu de gestion", "puzzle game", "jeu de rythme", "jeu narratif", "shoot'em up", "jeu d'exploration", "tower defense", "jeu de cartes", "jeu coopératif à deux", "jeu incrémental"],
+      mecanique: {
+        _: ["on ne peut pas sauter", "le temps n'avance que quand on bouge", "chaque mort change la carte", "on contrôle deux personnages à la fois", "la lumière est une ressource", "on joue le méchant", "on construit le niveau en jouant", "la gravité s'inverse", "on n'a qu'un seul bouton", "les ennemis deviennent des alliés", "tout se joue en 60 secondes", "le son guide le joueur"],
+        cosy: ["on soigne au lieu de combattre", "on range et on décore", "on cultive au rythme des saisons"],
+        sombre: ["le moral est une jauge", "chaque choix a un prix", "on ne peut jamais sauvegarder"],
+        drole: ["les contrôles changent à chaque niveau", "tout ce qu'on touche devient un canard", "le narrateur ment"],
+        epique: ["on dirige une armée entière", "chaque boss est une montagne", "le monde évolue sur des siècles"],
+        etrange: ["le jeu sait qu'on joue", "on voit à travers les yeux des ennemis", "l'écran lui-même est un obstacle"],
+      },
+      univers: {
+        _: ["sous l'océan", "dans une cuisine géante", "sur une planète en ruine", "dans un rêve", "dans une bibliothèque infinie", "dans un jardin miniature", "dans une ville de nuit", "sur le dos d'une baleine", "dans une usine abandonnée", "dans un Moyen Âge façon cartoon"],
+        cosy: ["dans un village de montagne", "dans une boulangerie", "dans une forêt en automne"],
+        sombre: ["dans un hôpital abandonné", "dans un monde englouti", "dans une ville sous couvre-feu"],
+        drole: ["dans un supermarché", "dans une machine à laver", "dans un bureau de poste"],
+        epique: ["dans un empire en guerre", "entre deux planètes", "au sommet d'une tour de mille étages"],
+        etrange: ["dans un tableau", "dans la tête d'un chat", "dans un monde en papier"],
+      },
+      heros: {
+        _: ["une petite graine", "un facteur", "un fantôme timide", "une lampe de poche", "un escargot", "une apprentie sorcière", "un robot aspirateur", "un renard", "un chevalier sans épée"],
+        cosy: ["une grand-mère", "un petit ours", "une jardinière"],
+        sombre: ["un fossoyeur", "une survivante", "un soldat oublié"],
+        drole: ["un pigeon", "une chaussette perdue", "un grille-pain"],
+        epique: ["une reine déchue", "un dieu mineur", "une chevalière légendaire"],
+        etrange: ["une ombre", "un rêve", "une porte"],
+      },
+    },
+    templates: {
+      simple: ["Un {genre}", "Un {genre} {univers}", "Un jeu où {mecanique}"],
+      moyen: ["Un {genre} où {mecanique}", "Un {genre} {univers}, avec {heros} comme héros", "Un {genre} {univers} où {mecanique}", "Incarner {heros} {univers} : {mecanique}"],
+      complexe: ["Un {genre} {univers} : on incarne {heros}, et {mecanique}. Bonus : {twist}", "Un mélange de {genre} et de {genre} où {mecanique}", "Incarner {heros} {univers} : {mecanique}, mais {mecanique}"],
+    },
+  },
+  "Pixel art": {
+    parts: {
+      sujet: {
+        _: ["une échoppe de potions", "un chat endormi", "une forêt en automne", "un vaisseau spatial", "une tasse de café fumante", "une chambre d'ado", "un phare dans la tempête", "une épée légendaire", "un marché de nuit", "une station de métro", "un coffre au trésor", "un personnage qui marche (4 images)", "une boutique de ramen", "une serre", "un champignon lumineux", "un slime qui rebondit"],
+        cosy: ["un salon avec une cheminée", "une boulangerie de village", "un chat sur un rebord de fenêtre", "une tente sous les étoiles"],
+        sombre: ["un manoir hanté", "un cimetière sous la lune", "une ruelle déserte", "un sous-sol inondé"],
+        drole: ["un slime au travail", "un boss qui prend sa pause", "un héros qui a perdu son épée", "une poule guerrière"],
+        epique: ["un château volant", "un dragon qui crache du feu", "une armée à l'horizon", "un temple géant"],
+        etrange: ["une ville à l'envers", "un œil dans le ciel", "un distributeur au milieu d'une forêt", "un poisson dans une ampoule"],
+      },
+      taille: ["16×16", "32×32", "48×48", "64×64", "128×128"],
+      palette: ["4 couleurs", "8 couleurs", "la palette PICO-8", "la palette Game Boy (4 verts)", "16 couleurs", "une seule teinte + noir et blanc"],
+      ambiance: {
+        _: ["au coucher du soleil", "sous la pluie", "de nuit, sous les néons", "en hiver", "à l'aube", "dans le brouillard", "en vue isométrique", "en vue de dessus"],
+        cosy: ["à la lueur des bougies", "un matin de neige"],
+        sombre: ["sous un ciel rouge", "à la lumière d'une seule lanterne"],
+        drole: ["en pleine catastrophe", "le jour du déménagement"],
+        epique: ["sous un ciel d'orage", "au lever du soleil, en plan large"],
+        etrange: ["avec une lumière venue d'en dessous", "dans des couleurs impossibles"],
+      },
+    },
+    templates: {
+      simple: ["{Sujet}", "{Sujet} en {taille}", "{Sujet} {ambiance}"],
+      moyen: ["{Sujet} {ambiance}, en {taille}", "{Sujet} en {taille}, avec {palette}", "{Sujet} {ambiance}, avec {palette}"],
+      complexe: ["{Sujet} {ambiance}, en {taille} avec {palette} : {twist}", "Une petite scène animée : {sujet} {ambiance}, en {taille}", "Deux versions de la même scène, {sujet} de jour puis {ambiance}, avec {palette}"],
+    },
   },
   "Autre": {
     parts: {
-      sujet: ["un phare", "une cabane dans les arbres", "un marché flottant", "un vieux robot", "une horloge", "un jardin secret", "une bibliothèque", "un voyageur", "une créature des marais", "un train de nuit", "une fête foraine", "une île minuscule"],
-      theme: ["l'oubli", "le passage du temps", "la solitude", "l'amitié", "la métamorphose", "le voyage", "la nostalgie", "la curiosité", "la réparation", "le silence"],
+      sujet: {
+        _: ["un phare", "une cabane dans les arbres", "un marché flottant", "un vieux robot", "une horloge", "un jardin secret", "une bibliothèque", "un voyageur", "une créature des marais", "un train de nuit", "une fête foraine", "une île minuscule"],
+        cosy: ["une tasse de thé", "un coin lecture", "une boulangerie"],
+        sombre: ["une porte condamnée", "un masque", "une tempête"],
+        drole: ["un pigeon", "un parapluie rebelle", "une chaussette orpheline"],
+        epique: ["une montagne", "un héros oublié", "une cité perdue"],
+        etrange: ["une clé sans serrure", "un miroir", "une porte dans le ciel"],
+      },
+      theme: {
+        _: ["l'oubli", "le passage du temps", "la solitude", "l'amitié", "la métamorphose", "le voyage", "la nostalgie", "la curiosité", "la réparation", "le silence"],
+        cosy: ["le réconfort", "la maison"],
+        sombre: ["la peur", "la perte"],
+        drole: ["l'absurde", "la maladresse"],
+        epique: ["le courage", "la légende"],
+        etrange: ["le rêve", "l'impossible"],
+      },
       contrainte: ["en 3 couleurs", "sans aucune ligne droite", "en une seule session", "avec un contraste fort", "dans un format tout en longueur", "inspiré d'un souvenir d'enfance", "avec un seul point de lumière", "en version minuscule"],
     },
-    templates: ["{Sujet} sur le thème de {theme}", "{Sujet}, {contrainte}", "{Theme} à travers {sujet}, {contrainte}"],
+    templates: {
+      simple: ["{Sujet}", "{Theme}", "{Sujet}, {contrainte}"],
+      moyen: ["{Sujet} sur le thème de {theme}", "{Theme} à travers {sujet}", "{Sujet}, {contrainte}, sur le thème de {theme}"],
+      complexe: ["{Theme} à travers {sujet} et {sujet}, {contrainte} : {twist}", "{Sujet} sur le thème de {theme}, {contrainte} et {contrainte}"],
+    },
   },
 };
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-function generateIdeas(project, count) {
+const shuffle = (list) => { for (let i = list.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [list[i], list[j]] = [list[j], list[i]]; } return list; };
+// Mots possibles pour une case, selon l'ambiance choisie.
+function wordsFor(slot, mood) {
+  if (Array.isArray(slot)) return slot;
+  if (!mood) return Object.values(slot).flat(); // Libre : toutes les ambiances mélangées
+  return slot[mood] && Math.random() < 0.7 ? slot[mood] : slot._;
+}
+// Un mot « masculin|féminin » s'accorde avec le dernier nom tiré (« une reine … fatiguée »).
+function fillTemplate(family, template, mood) {
+  const used = new Set(); // évite « un renard et un renard »
+  let feminine = false;
+  return template.replace(/\{(\w+)\}/g, (_, key) => {
+    const slot = key.toLowerCase() === "twist" ? TWISTS : family.parts[key.toLowerCase()];
+    let word;
+    for (let i = 0; i < 20 && (!word || used.has(word)); i++) word = pick(wordsFor(slot, mood));
+    used.add(word);
+    if (word.includes("|")) word = word.split("|")[feminine ? 1 : 0];
+    else if (/^(une|la) /i.test(word)) feminine = true;
+    else if (/^(un|le) /i.test(word)) feminine = false;
+    return key[0] === key[0].toUpperCase() ? capitalize(word) : word;
+  });
+}
+function generateIdeas(project, count, mood) {
   const family = IDEA_FAMILIES[disciplineOf(project)];
+  // On alterne les niveaux pour que chaque tirage mélange idées simples et complexes.
+  const levels = ["simple", "moyen", "complexe"];
+  const offset = Math.floor(Math.random() * 3);
+  const plan = shuffle(Array.from({ length: count }, (_, i) => levels[(offset + i) % 3]));
   const out = new Set();
-  for (let tries = 0; out.size < count && tries < 100; tries++) {
-    out.add(pick(family.templates).replace(/\{(\w+)\}/g, (_, key) => {
-      const word = pick(family.parts[key.toLowerCase()]);
-      return key[0] === key[0].toUpperCase() ? capitalize(word) : word;
-    }));
+  for (let i = 0, tries = 0; out.size < count && tries < 200; tries++) {
+    const idea = fillTemplate(family, pick(family.templates[plan[i % plan.length]]), mood);
+    if (!out.has(idea)) { out.add(idea); i++; }
   }
   return [...out];
 }
@@ -580,6 +770,7 @@ function render() {
   if (ui.view === "timer") app.innerHTML = viewTimer();
   else if (ui.view === "projects") app.innerHTML = viewProjects();
   else if (ui.view === "project") app.innerHTML = viewProject();
+  else if (ui.view === "stats") app.innerHTML = viewStats();
   else app.innerHTML = viewSettings();
   if (keepFocus) {
     const el = document.getElementById(keepFocus.id);
@@ -592,15 +783,32 @@ function viewTimer() {
   if (isRunning()) {
     const p = getProject(data.running.projectId);
     const st = projectStats(data.running.projectId);
+    const elapsed = now() - data.running.start;
+    let extra = "";
+    if (ui.stopAt) {
+      extra = `<form class="card stack done-card" data-form="stop-at">
+        <label class="field"><span>Heure de fin réelle</span>
+          <input type="datetime-local" id="stop-end" name="end" value="${toLocalInput(ui.stopAt)}" required></label>
+        <div class="row"><button type="button" class="btn ghost" data-action="stop-at-cancel">Annuler</button><button class="btn" type="submit">Terminer</button></div>
+      </form>`;
+    } else if (elapsed >= LONG_SESSION_MS && store.get(K.longDismissed, null) !== data.running.start) {
+      extra = `<div class="card warn-card stack" id="long-card">
+        <div class="title">La session tourne depuis ${fmtDur(elapsed)}</div>
+        <p class="help" style="margin:0">Tu as peut-être oublié de l'arrêter. Tu peux la terminer à l'heure où tu avais vraiment fini.</p>
+        <div class="row"><button class="btn ghost" data-action="dismiss-long">Continuer</button><button class="btn" data-action="stop-at">Corriger la fin</button></div>
+      </div>`;
+    }
     return `
       <div class="timer-hero">
         <h2 class="project-name">${esc(p ? p.name : "Projet supprimé")}</h2>
         ${p ? `<div class="caption">${disciplineOf(p)}</div>` : ""}
+        ${p && p.subject ? `<div class="subject-line">${esc(p.subject)}</div>` : ""}
         <div class="clock" id="clock">00:00</div>
         <div class="running-tag"><span class="dot"></span>Session ${st.count + 1} en cours · depuis ${fmtTime(data.running.start)}</div>
       </div>
+      ${extra}
       <button class="big-btn stop" data-action="stop">Terminer la session</button>
-      <div style="text-align:center"><button class="link-btn" data-action="cancel">Annuler cette session</button></div>
+      <div style="text-align:center"><button class="link-btn" data-action="stop-at">Terminer à une autre heure</button><button class="link-btn" data-action="cancel">Annuler cette session</button></div>
       <p class="help" style="text-align:center">Tu peux quitter l'app pour filmer : le temps est calculé depuis l'heure de départ.</p>`;
   }
 
@@ -651,6 +859,7 @@ function viewTimer() {
     <div class="timer-hero">
       <div class="clock idle">00:00</div>
       <div class="caption">${sel ? "Prêt pour la session " + (projectStats(sel.id).count + 1) : "Choisis un projet"}</div>
+      ${sel && sel.subject ? `<div class="subject-line">${esc(sel.subject)}</div>` : ""}
     </div>
     <button class="big-btn" data-action="start" ${sel ? "" : "disabled"}>Démarrer</button>
     <div class="section-title">Projet</div>
@@ -726,8 +935,9 @@ function viewProject() {
   const ideas = `
     <div class="section-title">Idées</div>
     <div class="card stack">
-      ${kept.map((i) => `<div class="idea">
+      ${kept.map((i) => `<div class="idea ${p.subject === i.text ? "chosen" : ""}">
         <span class="text">${esc(i.text)}</span>
+        <button class="icon-btn star" data-action="choose-subject" data-id="${esc(i.id)}" aria-pressed="${p.subject === i.text}" aria-label="Choisir comme sujet du projet">${p.subject === i.text ? "★" : "☆"}</button>
         <button class="icon-btn" data-action="drop-idea" data-id="${esc(i.id)}" aria-label="Retirer cette idée">×</button>
       </div>`).join("")}
       ${draft.length ? `${kept.length ? `<p class="ideas-kept">Nouvelles idées</p>` : ""}
@@ -736,6 +946,9 @@ function viewProject() {
           <button class="btn ghost" data-action="keep-idea" data-i="${i}">Garder</button>
           <button class="icon-btn" data-action="discard-idea" data-i="${i}" aria-label="Supprimer cette idée">×</button>
         </div>`).join("")}` : ""}
+      <div class="chips" role="group" aria-label="Ambiance">
+        ${MOODS.map((m) => `<button data-action="idea-mood" data-mood="${m.id}" aria-pressed="${m.id === ui.ideaMood}">${m.label}</button>`).join("")}
+      </div>
       <div class="seg count" role="group" aria-label="Nombre d'idées">
         ${[1, 2, 3, 4, 5].map((n) => `<button data-action="idea-count" data-n="${n}" aria-pressed="${n === ui.ideaCount}">${n}</button>`).join("")}
       </div>
@@ -746,6 +959,7 @@ function viewProject() {
     <button class="back" data-action="nav" data-view="projects">‹ Projets</button>
     <div class="detail-head">
       <h2>${esc(p.name)}</h2>
+      ${p.subject ? `<div class="subject"><span class="k">Sujet</span>${esc(p.subject)}</div>` : ""}
       <select class="caption inline-select" data-change="discipline" data-id="${p.id}" aria-label="Discipline">${disciplineOptions(disciplineOf(p))}</select>
       <span class="badge ${p.status === "done" ? "done" : ""}">${p.status === "done" ? "Terminé" : live ? "Session en cours" : "En cours"}</span>
     </div>
@@ -779,6 +993,88 @@ function viewProject() {
     </div>`;
 }
 
+/* ---------- Bilan ---------- */
+const addDays = (ts, n) => { const d = new Date(ts); d.setDate(d.getDate() + n); return d.getTime(); };
+const startOfDay = (ts) => { const d = new Date(ts); d.setHours(0, 0, 0, 0); return d.getTime(); };
+const dayLetterFmt = new Intl.DateTimeFormat("fr-FR", { weekday: "short" });
+const sumSessions = (list) => list.reduce((acc, s) => acc + Math.max(0, s.end - s.start), 0);
+// Une session compte pour le jour où elle a commencé.
+function streaks(sessions) {
+  const days = new Set(sessions.map((s) => startOfDay(s.start)));
+  const today = startOfDay(now());
+  let current = 0;
+  for (let d = days.has(today) ? today : addDays(today, -1); days.has(d); d = addDays(d, -1)) current++;
+  let best = 0, run = 0, prev = null;
+  for (const d of [...days].sort((a, b) => a - b)) {
+    run = prev !== null && addDays(prev, 1) === d ? run + 1 : 1;
+    best = Math.max(best, run); prev = d;
+  }
+  return { current, best };
+}
+function viewStats() {
+  const all = data.sessions.filter((s) => !s.deleted && getProject(s.projectId));
+  if (!all.length) return `<div class="empty"><h2>Pas encore de bilan</h2><p class="caption">Termine une première session pour voir tes statistiques.</p></div>`;
+
+  const today = startOfDay(now());
+  const weekStart = addDays(today, -((new Date(today).getDay() + 6) % 7)); // lundi
+  const monthStart = new Date(new Date(today).getFullYear(), new Date(today).getMonth(), 1).getTime();
+  const week = all.filter((s) => s.start >= weekStart);
+  const month = all.filter((s) => s.start >= monthStart);
+  const { current, best } = streaks(all);
+  const plural = (n, w) => `${n} ${w}${n > 1 ? "s" : ""}`;
+
+  // 7 derniers jours
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = addDays(today, i - 6);
+    return { d, total: sumSessions(all.filter((s) => s.start >= d && s.start < addDays(d, 1))) };
+  });
+  const maxDay = Math.max(...days.map((x) => x.total), 1);
+
+  // Répartition sur la période choisie
+  const period = ui.statsPeriod === "all" ? all : month;
+  const byDisc = DISCIPLINES.map((d) => ({ d, total: sumSessions(period.filter((s) => disciplineOf(getProject(s.projectId)) === d)) }))
+    .filter((x) => x.total > 0).sort((a, b) => b.total - a.total);
+  const byProject = liveProjects().map((p) => ({ p, total: sumSessions(period.filter((s) => s.projectId === p.id)) }))
+    .filter((x) => x.total > 0).sort((a, b) => b.total - a.total).slice(0, 5);
+  const hbars = (rows, label) => {
+    const max = rows.length ? rows[0].total : 1;
+    return rows.map((r) => `<div class="hbar">
+      <div class="lbl"><span class="ellipsis">${label(r)}</span><span class="val">${fmtDur(r.total)}</span></div>
+      <div class="track"><div class="fill" style="width:${(r.total / max) * 100}%"></div></div>
+    </div>`).join("");
+  };
+  const emptyPeriod = `<p class="caption" style="margin:0">Aucune session ce mois-ci.</p>`;
+
+  return `
+    <div class="stats" style="margin-top:4px">
+      <div class="stat"><div class="v">${fmtDur(sumSessions(week))}</div><div class="k">cette semaine · ${plural(week.length, "session")}</div></div>
+      <div class="stat"><div class="v">${fmtDur(sumSessions(month))}</div><div class="k">ce mois · ${plural(month.length, "session")}</div></div>
+      <div class="stat"><div class="v">${plural(current, "jour")}</div><div class="k">série en cours</div></div>
+      <div class="stat"><div class="v">${plural(best, "jour")}</div><div class="k">record de jours d'affilée</div></div>
+    </div>
+    <div class="section-title">7 derniers jours</div>
+    <div class="card">
+      <div class="week" role="img" aria-label="Temps de création par jour sur les 7 derniers jours">
+        ${days.map((x) => `<div class="col" title="${fmtDate(x.d)} : ${fmtDur(x.total)}">
+          ${x.total ? `<span class="v">${fmtDur(x.total)}</span>` : ""}
+          <div class="bar" style="height:${x.total ? Math.max(4, (x.total / maxDay) * 110) : 0}px"></div>
+        </div>`).join("")}
+      </div>
+      <div class="week-days">${days.map((x) => `<span class="${x.d === today ? "today" : ""}">${x.d === today ? "auj." : dayLetterFmt.format(new Date(x.d))}</span>`).join("")}</div>
+    </div>
+    <div class="section-title">Répartition</div>
+    <div class="seg">
+      <button data-action="stats-period" data-period="month" aria-pressed="${ui.statsPeriod !== "all"}">Ce mois</button>
+      <button data-action="stats-period" data-period="all" aria-pressed="${ui.statsPeriod === "all"}">Depuis le début</button>
+    </div>
+    <div class="card stack">
+      <h3 style="font-size:16px">Par discipline</h3>
+      <div>${byDisc.length ? hbars(byDisc, (r) => r.d) : emptyPeriod}</div>
+      <h3 style="font-size:16px">Projets les plus travaillés</h3>
+      <div>${byProject.length ? hbars(byProject, (r) => esc(r.p.name)) : emptyPeriod}</div>
+    </div>`;
+}
+
 function viewSettings() {
   const statusText = settingsStatusText();
   return `
@@ -806,8 +1102,16 @@ function viewSettings() {
 
 /* ---------- Chrono ---------- */
 function tick() {
+  const running = isRunning();
+  const elapsed = running ? now() - data.running.start : 0;
   const el = document.getElementById("clock");
-  if (el && isRunning()) el.textContent = fmtClock(now() - data.running.start);
+  if (el && running) el.textContent = fmtClock(elapsed);
+  // Le chrono dans le titre de l'onglet, pour le voir sans ouvrir l'app.
+  const p = running && getProject(data.running.projectId);
+  document.title = running ? `${fmtClock(elapsed)} · ${p ? p.name : "Timer"}` : "Timer";
+  // Affiche l'alerte de session longue dès que le seuil est franchi.
+  if (running && ui.view === "timer" && !ui.stopAt && elapsed >= LONG_SESSION_MS
+      && store.get(K.longDismissed, null) !== data.running.start && !document.getElementById("long-card")) render();
 }
 setInterval(tick, 1000);
 
@@ -833,6 +1137,17 @@ document.addEventListener("click", (e) => {
     case "start": if (ui.selected) startTimer(ui.selected); break;
     case "start-from": ui.selected = id; store.set(K.selected, id); startTimer(id); ui.view = "timer"; render(); break;
     case "stop": stopTimer(); break;
+    case "stop-at": ui.stopAt = Math.min(now(), data.running.start + 3600000); render(); break;
+    case "stop-at-cancel": ui.stopAt = null; render(); break;
+    case "dismiss-long": store.set(K.longDismissed, data.running.start); render(); break;
+    case "stats-period": ui.statsPeriod = el.dataset.period; store.set(K.statsPeriod, ui.statsPeriod); render(); break;
+    case "idea-mood": ui.ideaMood = el.dataset.mood; store.set(K.ideaMood, ui.ideaMood); render(); break;
+    case "choose-subject": {
+      const p = getProject(ui.projectId);
+      const idea = p && (p.ideas || []).find((i) => i.id === id);
+      if (idea) updateProject(p.id, { subject: p.subject === idea.text ? null : idea.text });
+      break;
+    }
     case "cancel": if (confirm("Annuler cette session ? Le temps en cours ne sera pas enregistré.")) cancelTimer(); break;
     case "save-stop-note": {
       const v = document.getElementById("stop-note")?.value || "";
@@ -870,7 +1185,7 @@ document.addEventListener("click", (e) => {
     case "idea-count": ui.ideaCount = Number(el.dataset.n); store.set(K.ideaCount, ui.ideaCount); render(); break;
     case "gen-ideas": {
       const p = getProject(id);
-      if (p) { ui.ideaDraft = { projectId: id, list: generateIdeas(p, ui.ideaCount) }; render(); }
+      if (p) { ui.ideaDraft = { projectId: id, list: generateIdeas(p, ui.ideaCount, ui.ideaMood) }; render(); }
       break;
     }
     case "discard-idea": {
@@ -935,6 +1250,13 @@ document.addEventListener("submit", (e) => {
         commit();
       }
       toast("Session enregistrée");
+      break;
+    }
+    case "stop-at": {
+      const end = fromLocalInput(fd.get("end"));
+      if (!(end > data.running.start)) { toast("La fin doit être après le début"); return; }
+      if (end > now()) { toast("La fin ne peut pas être dans le futur"); return; }
+      stopTimer(end);
       break;
     }
     case "settings": {
