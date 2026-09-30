@@ -126,7 +126,16 @@
     width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 12px;
     padding: 12px 14px; font-size: 16px; color: var(--paper); -webkit-appearance: none; appearance: none;
   }
-  input:focus { outline: 2px solid var(--paper); outline-offset: 1px; }
+  select {
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%23F2EDE4' stroke-opacity='.6' stroke-width='2'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 14px center; padding-right: 38px;
+  }
+  select:invalid { color: var(--faint); }
+  select.inline-select {
+    width: auto; border: 0; border-radius: 8px; padding: 2px 26px 2px 0; min-height: 0;
+    background-color: transparent; background-position: right 6px center; font-size: 16px;
+  }
+  select:focus, input:focus { outline: 2px solid var(--paper); outline-offset: 1px; }
   input[type="datetime-local"] { min-height: 48px; }
   .row { display: flex; gap: 10px; }
   .row > * { flex: 1; min-width: 0; }
@@ -316,6 +325,19 @@ function merge(a, b) {
   };
 }
 
+const DISCIPLINES = ["Figurine", "Jeu", "Pixel art", "Autre"];
+// Les projets créés avant la liste déroulante ont une discipline libre : on la range dans la plus proche.
+function disciplineOf(p) {
+  const d = p.discipline || "";
+  if (DISCIPLINES.includes(d)) return d;
+  if (/pixel/i.test(d)) return "Pixel art";
+  if (/jeu|game/i.test(d)) return "Jeu";
+  if (/figurine/i.test(d)) return "Figurine";
+  return "Autre";
+}
+const disciplineOptions = (current) =>
+  DISCIPLINES.map((d) => `<option value="${d}" ${d === current ? "selected" : ""}>${d}</option>`).join("");
+
 const liveProjects = () => data.projects.filter((p) => !p.deleted);
 const getProject = (id) => data.projects.find((p) => p.id === id && !p.deleted);
 const projectSessions = (id) => data.sessions.filter((s) => s.projectId === id && !s.deleted).sort((a, b) => a.start - b.start);
@@ -337,7 +359,7 @@ function commit() {
 }
 function addProject(name, discipline) {
   const t = now();
-  const p = { id: uid(), name: name.trim(), discipline: (discipline || "").trim(), status: "active", createdAt: t, finishedAt: null, updatedAt: t };
+  const p = { id: uid(), name: name.trim(), discipline: DISCIPLINES.includes(discipline) ? discipline : "Autre", status: "active", createdAt: t, finishedAt: null, updatedAt: t };
   data.projects.push(p);
   ui.selected = p.id; store.set(K.selected, p.id);
   commit();
@@ -387,11 +409,10 @@ function dropIdea(projectId, ideaId) {
 }
 
 /* ---------- Générateur d'idées ---------- */
-// Chaque famille : un test sur la discipline (ou le nom), des listes de mots, et des modèles.
+// Une famille par discipline : des listes de mots et des modèles.
 // Dans un modèle, {cle} pioche un mot au hasard dans la liste, {Cle} fait pareil avec une majuscule.
-const IDEA_FAMILIES = [
-  {
-    match: /pixel/i,
+const IDEA_FAMILIES = {
+  "Pixel art": {
     parts: {
       sujet: ["une échoppe de potions", "un chat endormi", "une forêt en automne", "un vaisseau spatial", "une tasse de café fumante", "une chambre d'ado", "un phare dans la tempête", "une épée légendaire", "un marché de nuit", "une station de métro", "un coffre au trésor", "un personnage qui marche (4 images)", "une boutique de ramen", "une serre", "un champignon lumineux", "un slime qui rebondit"],
       taille: ["16×16", "32×32", "48×48", "64×64", "128×128"],
@@ -400,8 +421,7 @@ const IDEA_FAMILIES = [
     },
     templates: ["{Sujet} {ambiance}, en {taille}", "{Sujet} en {taille}, avec {palette}", "{Sujet} {ambiance}, avec {palette}"],
   },
-  {
-    match: /jeu|game|jam|proto/i,
+  "Jeu": {
     parts: {
       genre: ["un jeu de plateforme", "un roguelike", "un jeu de gestion", "un puzzle game", "un jeu de rythme", "un jeu narratif", "un shoot'em up", "un jeu d'exploration", "un tower defense", "un jeu de cartes", "un jeu coopératif à deux", "un idle game"],
       mecanique: ["on ne peut pas sauter", "le temps n'avance que quand on bouge", "chaque mort change la carte", "on contrôle deux personnages à la fois", "la lumière est une ressource", "on joue le méchant", "on construit le niveau en jouant", "la gravité s'inverse", "on n'a qu'un seul bouton", "les ennemis deviennent des alliés", "tout se joue en 60 secondes", "le son guide le joueur"],
@@ -410,8 +430,7 @@ const IDEA_FAMILIES = [
     },
     templates: ["{Genre} où {mecanique}", "{Genre} {univers}, avec {heros} comme héros", "{Genre} {univers} où {mecanique}", "Incarner {heros} {univers} : {mecanique}"],
   },
-  {
-    match: /figurine|sculpt|mini|warhammer|peint/i,
+  "Figurine": {
     parts: {
       sujet: ["un chevalier", "une sorcière", "un gobelin marchand", "un robot jardinier", "une pirate", "un petit dragon", "un moine guerrier", "un golem de mousse", "un samouraï", "une exploratrice", "un nain forgeron", "un champignon animé", "un mécha éclaireur", "une chasseuse de primes", "un vieux magicien", "un chat mercenaire", "une reine déchue", "un orc cuisinier"],
       trait: ["fatigué après la bataille", "en pleine incantation", "qui porte un trésor trop lourd", "surpris par la pluie", "en armure rouillée", "couvert de lierre", "en tenue de fête", "blessé mais debout", "qui fait une pause", "en pleine course", "qui se cache", "aux couleurs de l'automne"],
@@ -420,8 +439,7 @@ const IDEA_FAMILIES = [
     },
     templates: ["{Sujet} {trait}, {decor}", "{Sujet} {decor}, {contrainte}", "{Sujet} {trait}, {contrainte}"],
   },
-  {
-    match: /.*/, // Toutes les autres disciplines
+  "Autre": {
     parts: {
       sujet: ["un phare", "une cabane dans les arbres", "un marché flottant", "un vieux robot", "une horloge", "un jardin secret", "une bibliothèque", "un voyageur", "une créature des marais", "un train de nuit", "une fête foraine", "une île minuscule"],
       theme: ["l'oubli", "le passage du temps", "la solitude", "l'amitié", "la métamorphose", "le voyage", "la nostalgie", "la curiosité", "la réparation", "le silence"],
@@ -429,11 +447,11 @@ const IDEA_FAMILIES = [
     },
     templates: ["{Sujet} sur le thème de {theme}", "{Sujet}, {contrainte}", "{Theme} à travers {sujet}, {contrainte}"],
   },
-];
+};
 const pick = (list) => list[Math.floor(Math.random() * list.length)];
 const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
 function generateIdeas(project, count) {
-  const family = IDEA_FAMILIES.find((f) => f.match.test(`${project.discipline || ""} ${project.name}`));
+  const family = IDEA_FAMILIES[disciplineOf(project)];
   const out = new Set();
   for (let tries = 0; out.size < count && tries < 100; tries++) {
     out.add(pick(family.templates).replace(/\{(\w+)\}/g, (_, key) => {
@@ -567,7 +585,7 @@ function viewTimer() {
     return `
       <div class="timer-hero">
         <h2 class="project-name">${esc(p ? p.name : "Projet supprimé")}</h2>
-        ${p && p.discipline ? `<div class="caption">${esc(p.discipline)}</div>` : ""}
+        ${p ? `<div class="caption">${disciplineOf(p)}</div>` : ""}
         <div class="clock" id="clock">00:00</div>
         <div class="running-tag"><span class="dot"></span>Session ${st.count + 1} en cours · depuis ${fmtTime(data.running.start)}</div>
       </div>
@@ -615,7 +633,7 @@ function viewTimer() {
       return `<button class="pick" data-action="select" data-id="${p.id}" aria-pressed="${p.id === ui.selected}">
         <span class="radio"></span>
         <span class="grow"><span class="ellipsis" style="display:block;font-weight:600">${esc(p.name)}</span>
-        <span class="meta">${p.discipline ? esc(p.discipline) + " · " : ""}${st.count} session${st.count > 1 ? "s" : ""} · ${fmtDur(st.total)}</span></span>
+        <span class="meta">${disciplineOf(p)} · ${st.count} session${st.count > 1 ? "s" : ""} · ${fmtDur(st.total)}</span></span>
       </button>`;
     }).join("");
 
@@ -633,7 +651,6 @@ function viewProjects() {
   const all = liveProjects();
   const shown = all.filter((p) => (ui.filter === "done" ? p.status === "done" : p.status !== "done"))
     .sort((a, b) => ui.filter === "done" ? (b.finishedAt || 0) - (a.finishedAt || 0) : (projectStats(b.id).last || b.createdAt) - (projectStats(a.id).last || a.createdAt));
-  const disciplines = [...new Set(all.map((p) => p.discipline).filter(Boolean))];
   const nActive = all.filter((p) => p.status !== "done").length, nDone = all.length - nActive;
 
   const list = shown.map((p) => {
@@ -642,7 +659,7 @@ function viewProjects() {
     return `<button class="proj" data-action="open" data-id="${p.id}">
       ${live ? '<span class="live"></span>' : ""}
       <span class="grow"><span class="name ellipsis" style="display:block">${esc(p.name)}</span>
-      <span class="meta">${p.discipline ? esc(p.discipline) + " · " : ""}${st.count} session${st.count > 1 ? "s" : ""} · ${fmtDur(st.total)}${p.status === "done" && p.finishedAt ? " · fini le " + fmtDateLong(p.finishedAt) : ""}</span></span>
+      <span class="meta">${disciplineOf(p)} · ${st.count} session${st.count > 1 ? "s" : ""} · ${fmtDur(st.total)}${p.status === "done" && p.finishedAt ? " · fini le " + fmtDateLong(p.finishedAt) : ""}</span></span>
       <span class="chev">›</span>
     </button>`;
   }).join("");
@@ -651,8 +668,9 @@ function viewProjects() {
     <form class="card stack" data-form="new-project" autocomplete="off">
       <h3>Nouveau projet</h3>
       <label class="field"><span>Nom</span><input type="text" id="np-name" name="name" placeholder="Ex. Figurine Chopper" required></label>
-      <label class="field"><span>Discipline</span><input type="text" id="np-disc" name="discipline" list="disc-list" placeholder="Ex. Figurine, Jeu, Pixel art"></label>
-      <datalist id="disc-list">${disciplines.map((d) => `<option value="${esc(d)}">`).join("")}</datalist>
+      <label class="field"><span>Discipline</span><select id="np-disc" name="discipline" required>
+        <option value="" disabled selected>Choisir…</option>${disciplineOptions(null)}
+      </select></label>
       <button class="btn full" type="submit">Créer</button>
     </form>
     <div class="section-title">Mes projets</div>
@@ -717,7 +735,7 @@ function viewProject() {
     <button class="back" data-action="nav" data-view="projects">‹ Projets</button>
     <div class="detail-head">
       <h2>${esc(p.name)}</h2>
-      ${p.discipline ? `<div class="caption">${esc(p.discipline)}</div>` : ""}
+      <select class="caption inline-select" data-change="discipline" data-id="${p.id}" aria-label="Discipline">${disciplineOptions(disciplineOf(p))}</select>
       <span class="badge ${p.status === "done" ? "done" : ""}">${p.status === "done" ? "Terminé" : live ? "Session en cours" : "En cours"}</span>
     </div>
     <div class="stats">
@@ -825,10 +843,7 @@ document.addEventListener("click", (e) => {
     case "rename": {
       const p = getProject(id);
       const name = prompt("Nouveau nom du projet", p.name);
-      if (name && name.trim()) {
-        const disc = prompt("Discipline", p.discipline || "");
-        updateProject(id, { name: name.trim(), discipline: disc === null ? p.discipline : disc.trim() });
-      }
+      if (name && name.trim()) updateProject(id, { name: name.trim() });
       break;
     }
     case "delete-project": {
@@ -917,6 +932,14 @@ document.addEventListener("submit", (e) => {
       sync();
       break;
     }
+  }
+});
+
+document.addEventListener("change", (e) => {
+  const el = e.target.closest("[data-change]");
+  if (el && el.dataset.change === "discipline") {
+    ui.ideaDraft = null; // les idées proposées ne correspondent plus à la discipline
+    updateProject(el.dataset.id, { discipline: el.value });
   }
 });
 
