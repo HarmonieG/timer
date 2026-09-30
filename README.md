@@ -11,6 +11,7 @@ Chrono de sessions de création, par projet. S'installe sur iPhone depuis Safari
 - Fiche projet : nombre de sessions, temps total, moyenne par session, dates.
 - **Marquer comme terminé** : l'œuvre passe dans « Terminés » avec son bilan (ex. « 9 sessions · 11 h 40 »).
 - Ajouter une session oubliée, corriger ou supprimer une session.
+- **Idées** : dans la fiche projet, choisir de 1 à 5 puis **Générer** propose des sujets au hasard selon la discipline (Figurine, Jeu, Pixel art, ou des idées générales pour les autres). **Garder** enregistre une idée dans le projet, **×** la retire. Tout se passe sur le téléphone, sans réseau ni service externe.
 - Hors ligne : tout reste sur le téléphone et part sur GitHub au retour du réseau.
 
 ## Installation (environ 10 minutes, une seule fois)
@@ -87,7 +88,8 @@ Remplace `index.html` (ou les autres fichiers) dans le dépôt `timer`. L'app r�
   "version": 1,
   "projects": [
     { "id": "…", "name": "Figurine Chopper", "discipline": "Figurine",
-      "status": "active | done", "createdAt": 0, "finishedAt": null, "updatedAt": 0 }
+      "status": "active | done", "createdAt": 0, "finishedAt": null, "updatedAt": 0,
+      "ideas": [ { "id": "…", "text": "Un nain forgeron dans une forge", "createdAt": 0 } ] }
   ],
   "sessions": [
     { "id": "…", "projectId": "…", "start": 0, "end": 0, "note": "", "createdAt": 0, "updatedAt": 0 }
