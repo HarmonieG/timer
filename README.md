@@ -4,14 +4,14 @@ Chrono de sessions de création, par projet. S'installe sur iPhone depuis Safari
 
 ## Ce que fait la V1
 
-- Plusieurs projets en parallèle, chacun avec une discipline (Figurine, Jeu, Pixel art…).
+- Plusieurs projets en parallèle, chacun avec une discipline choisie dans une liste : Figurine, Illustration, Jeu, Pixel art ou Autre. Elle se change depuis la fiche projet.
 - Choisir un projet → **Démarrer** → aller filmer → revenir → **Terminer la session**.
   Le chrono enregistre l'heure de départ : tu peux quitter l'app, verrouiller le téléphone ou même la fermer, le temps restera juste.
 - Une note facultative à la fin de chaque session.
 - Fiche projet : nombre de sessions, temps total, moyenne par session, dates.
 - **Marquer comme terminé** : l'œuvre passe dans « Terminés » avec son bilan (ex. « 9 sessions · 11 h 40 »).
 - Ajouter une session oubliée, corriger ou supprimer une session.
-- **Idées** : dans la fiche projet, choisir de 1 à 5 puis **Générer** propose des sujets au hasard selon la discipline (Figurine, Jeu, Pixel art, ou des idées générales pour les autres). **Garder** enregistre une idée dans le projet, **×** la retire. Tout se passe sur le téléphone, sans réseau ni service externe.
+- **Idées** : dans la fiche projet, choisir de 1 à 5 puis **Générer** propose des sujets au hasard selon la discipline (des idées générales pour « Autre »). **Garder** enregistre une idée dans le projet, **×** la retire. Tout se passe sur le téléphone, sans réseau ni service externe.
 - Hors ligne : tout reste sur le téléphone et part sur GitHub au retour du réseau.
 
 ## Installation (environ 10 minutes, une seule fois)
@@ -87,7 +87,7 @@ Remplace `index.html` (ou les autres fichiers) dans le dépôt `timer`. L'app r�
 {
   "version": 1,
   "projects": [
-    { "id": "…", "name": "Figurine Chopper", "discipline": "Figurine",
+    { "id": "…", "name": "Figurine Chopper", "discipline": "Figurine | Illustration | Jeu | Pixel art | Autre",
       "status": "active | done", "createdAt": 0, "finishedAt": null, "updatedAt": 0,
       "ideas": [ { "id": "…", "text": "Un nain forgeron dans une forge", "createdAt": 0 } ] }
   ],
