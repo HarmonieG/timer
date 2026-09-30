@@ -4,7 +4,7 @@ Chrono de sessions de création, par projet. S'installe sur iPhone depuis Safari
 
 ## Ce que fait la V1
 
-- Plusieurs projets en parallèle, chacun avec une discipline choisie dans une liste : Figurine, Jeu, Pixel art ou Autre. Elle se change depuis la fiche projet.
+- Plusieurs projets en parallèle, chacun avec une discipline choisie dans une liste : Figurine, Illustration, Jeu, Pixel art ou Autre. Elle se change depuis la fiche projet.
 - Choisir un projet → **Démarrer** → aller filmer → revenir → **Terminer la session**.
   Le chrono enregistre l'heure de départ : tu peux quitter l'app, verrouiller le téléphone ou même la fermer, le temps restera juste.
 - Une note facultative à la fin de chaque session.
@@ -87,7 +87,7 @@ Remplace `index.html` (ou les autres fichiers) dans le dépôt `timer`. L'app r�
 {
   "version": 1,
   "projects": [
-    { "id": "…", "name": "Figurine Chopper", "discipline": "Figurine | Jeu | Pixel art | Autre",
+    { "id": "…", "name": "Figurine Chopper", "discipline": "Figurine | Illustration | Jeu | Pixel art | Autre",
       "status": "active | done", "createdAt": 0, "finishedAt": null, "updatedAt": 0,
       "ideas": [ { "id": "…", "text": "Un nain forgeron dans une forge", "createdAt": 0 } ] }
   ],

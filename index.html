@@ -325,7 +325,7 @@ function merge(a, b) {
   };
 }
 
-const DISCIPLINES = ["Figurine", "Jeu", "Pixel art", "Autre"];
+const DISCIPLINES = ["Figurine", "Illustration", "Jeu", "Pixel art", "Autre"];
 // Les projets créés avant la liste déroulante ont une discipline libre : on la range dans la plus proche.
 function disciplineOf(p) {
   const d = p.discipline || "";
@@ -333,6 +333,7 @@ function disciplineOf(p) {
   if (/pixel/i.test(d)) return "Pixel art";
   if (/jeu|game/i.test(d)) return "Jeu";
   if (/figurine/i.test(d)) return "Figurine";
+  if (/illustr|dessin|aquarelle|peinture|croquis/i.test(d)) return "Illustration";
   return "Autre";
 }
 const disciplineOptions = (current) =>
@@ -438,6 +439,15 @@ const IDEA_FAMILIES = {
       contrainte: ["palette limitée à 3 couleurs", "éclairage de bougie (OSL)", "métal peint façon NMM", "ambiance nocturne", "tons froids uniquement", "effet usé et sale", "couleurs complémentaires", "une seule couleur vive"],
     },
     templates: ["{Sujet} {trait}, {decor}", "{Sujet} {decor}, {contrainte}", "{Sujet} {trait}, {contrainte}"],
+  },
+  "Illustration": {
+    parts: {
+      sujet: ["une libraire", "un renard voyageur", "une sorcière des marais", "un vieux marin", "une baleine volante", "un enfant et son robot", "une maison sur pattes", "un dragon endormi", "une jardinière", "un musicien de rue", "un chat astronaute", "une gardienne de phare", "un géant de pierre", "une ville perchée"],
+      scene: ["qui lit sous un arbre", "au milieu d'un marché", "sous une pluie d'étoiles", "dans une cuisine en désordre", "au sommet d'une falaise", "pendant une tempête", "dans un train de nuit", "au bord d'un lac gelé", "dans une serre envahie", "sur un toit, au crépuscule"],
+      style: ["à l'aquarelle", "à l'encre seule", "en couleurs pastel", "façon livre jeunesse", "en noir et blanc", "façon affiche vintage", "façon carnet de croquis", "en ombres chinoises", "au crayon de couleur"],
+      contrainte: ["en contre-plongée", "avec une seule source de lumière", "en 3 couleurs", "avec beaucoup de vide", "en format carré", "vu de très près", "vu de très loin", "avec un cadre décoratif"],
+    },
+    templates: ["{Sujet} {scene}, {style}", "{Sujet} {scene}, {contrainte}", "{Sujet} {style}, {contrainte}"],
   },
   "Autre": {
     parts: {
